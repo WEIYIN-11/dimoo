@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); const names = Object.keys\\(l\\).filter\\(k => /github|instagram|linkedin|twitter|x$/i.test\\(k\\)\\); console.log\\(names\\);\")",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); const names = Object.keys\\(l\\).filter\\(k => !k.startsWith\\(''Lucide''\\) && /^[A-Z]/.test\\(k\\)\\); console.log\\(names.slice\\(0,20\\)\\); console.log\\(''total:'', names.length\\);\")",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); console.log\\(l.Github ? ''Github exists'' : ''no Github''\\); console.log\\(Object.keys\\(l\\).filter\\(k=> k.toLowerCase\\(\\).includes\\(''link''\\) || k.toLowerCase\\(\\).includes\\(''external''\\)\\).slice\\(0,10\\)\\);\")",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); const check = [''Globe'',''Mail'',''Code2'',''GitBranch'',''Camera'',''Briefcase'',''X'',''Terminal'',''User'',''Link'']; check.forEach\\(n => console.log\\(n, !!l[n]\\)\\);\")",
+      "Bash(node --input-type=commonjs:*)",
+      "Bash(npm create:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm run:*)",
+      "Bash(netstat -ano)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

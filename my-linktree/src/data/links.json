@@ -1,0 +1,38 @@
+[
+  {
+    "title": "GitHub",
+    "url": "https://github.com/your-username",
+    "icon": "GitBranch",
+    "description": "我的開源專案與程式碼"
+  },
+  {
+    "title": "Instagram",
+    "url": "https://instagram.com/your-username",
+    "icon": "Camera",
+    "description": "日常生活與創作分享"
+  },
+  {
+    "title": "Portfolio",
+    "url": "https://your-portfolio.com",
+    "icon": "Globe",
+    "description": "作品集與個人網站"
+  },
+  {
+    "title": "LinkedIn",
+    "url": "https://linkedin.com/in/your-username",
+    "icon": "Briefcase",
+    "description": "職涯與專業連結"
+  },
+  {
+    "title": "Twitter / X",
+    "url": "https://twitter.com/your-username",
+    "icon": "X",
+    "description": "想法與技術分享"
+  },
+  {
+    "title": "Email",
+    "url": "mailto:your@email.com",
+    "icon": "Mail",
+    "description": "直接與我聯絡"
+  }
+]
