@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Check, X, Package } from 'lucide-react';
-import { getProducts, addProduct, updateProduct, deleteProduct, DEFAULT_CATEGORIES } from '../storage';
+import { Plus, Pencil, Trash2, Check, X, Package, AlertTriangle } from 'lucide-react';
+import { getProducts, addProduct, updateProduct, deleteProduct, DEFAULT_CATEGORIES, clearAllData } from '../storage';
 
 // ─── Tag input – type + Enter to add, click × to remove ───────────────────────
 function TagInput({ label, tags, onChange }) {
@@ -251,11 +251,60 @@ function catColor(c) {
   return CAT_COLOR[c] ?? 'bg-gray-100 text-gray-500';
 }
 
+// ─── Danger zone – reset all data ────────────────────────────────────────────
+function ResetZone({ onReset }) {
+  const [confirm, setConfirm] = useState(false);
+
+  function handleReset() {
+    clearAllData();
+    onReset();
+    setConfirm(false);
+  }
+
+  if (confirm) {
+    return (
+      <div className="border-2 border-red-300 bg-red-50 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={18} className="text-red-500 shrink-0" />
+          <p className="text-sm font-bold text-red-700">確定要清除所有資料？</p>
+        </div>
+        <p className="text-xs text-red-600">
+          商品、庫存、採購、銷售紀錄將全部刪除，此操作無法復原。
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setConfirm(false)}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm font-semibold hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleReset}
+            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold active:scale-95 transition-all"
+          >
+            確認清除
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setConfirm(true)}
+      className="w-full py-3 rounded-2xl border border-red-200 text-red-400 text-sm font-semibold hover:bg-red-50 hover:text-red-500 hover:border-red-300 active:scale-95 transition-all flex items-center justify-center gap-2"
+    >
+      <Trash2 size={15} /> 清除所有資料
+    </button>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [showAdd, setShowAdd]   = useState(false);
   const [editId, setEditId]     = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   function reload() { setProducts(getProducts()); }
   useEffect(reload, []);
@@ -273,9 +322,12 @@ export default function Products() {
   }
 
   function handleDelete(id) {
-    if (window.confirm('確定要刪除此商品？')) {
+    if (confirmDeleteId === id) {
       deleteProduct(id);
       reload();
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
     }
   }
 
@@ -352,25 +404,46 @@ export default function Products() {
                     </div>
                     <div className="flex gap-1 ml-2">
                       <button
-                        onClick={() => { setEditId(p.id); setShowAdd(false); }}
+                        onClick={() => { setEditId(p.id); setShowAdd(false); setConfirmDeleteId(null); }}
                         className="w-10 h-10 rounded-xl hover:bg-brand-50 text-brand-600 flex items-center justify-center"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(p.id)}
-                        className="w-10 h-10 rounded-xl hover:bg-red-50 text-red-400 flex items-center justify-center"
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                          confirmDeleteId === p.id
+                            ? 'bg-red-500 text-white'
+                            : 'hover:bg-red-50 text-red-400'
+                        }`}
                       >
                         <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
+                  {/* Inline delete confirm hint */}
+                  {confirmDeleteId === p.id && (
+                    <div className="mt-2 flex items-center justify-between bg-red-50 rounded-xl px-3 py-2">
+                      <p className="text-xs text-red-600 font-semibold">再按一次確認刪除</p>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-xs text-gray-400 hover:text-gray-600"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+
+      {/* Reset zone — at bottom of page */}
+      <div className="pt-4 border-t border-gray-100 mt-2">
+        <ResetZone onReset={reload} />
+      </div>
     </div>
   );
 }

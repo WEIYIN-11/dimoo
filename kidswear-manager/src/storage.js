@@ -301,6 +301,13 @@ export function deleteSale(id) {
   save(SALES_KEY, getSales().filter(s => s.id !== id));
 }
 
+// ─── Reset ────────────────────────────────────────────────────────────────────
+/** Wipe ALL app data from localStorage. Use with caution. */
+export function clearAllData() {
+  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, INV_SIZES_KEY]
+    .forEach(key => localStorage.removeItem(key));
+}
+
 // ─── Computed helpers ─────────────────────────────────────────────────────────
 export function computeStats(sales) {
   const revenue = sales.reduce((sum, s) => sum + s.actualPrice * s.quantity, 0);
