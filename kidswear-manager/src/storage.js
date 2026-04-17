@@ -279,21 +279,37 @@ export function updatePurchase(id, updates) {
 
 /**
  * Confirm receipt: set status → 已完成, add stock to inventory.
- * Falls back to name-based product lookup if productId is empty.
+ * Resolution order:
+ *   1. purchase.productId (already stored)
+ *   2. name-based lookup in products list
+ *   3. auto-create a new product so stock is never silently lost
  */
 export function confirmReceipt(purchaseId) {
   const purchases = getPurchases();
   const purchase  = purchases.find(p => p.id === purchaseId);
   if (!purchase || purchase.status !== '已下單') return;
 
-  // Resolve productId: stored id → name lookup → give up
-  const effectiveId = purchase.productId ||
+  // Step 1 & 2: resolve from stored id or name lookup
+  let effectiveId = purchase.productId ||
     getProducts().find(p => p.name === purchase.productName)?.id || '';
 
-  // Update status
-  save(PURCHASES_KEY, purchases.map(p =>
+  // Step 3: auto-create product so stock is never lost
+  if (!effectiveId && purchase.productName) {
+    const created = addProduct({
+      name:     purchase.productName,
+      category: '',
+      cost:     purchase.unitCost,
+      price:    0,
+      sizes:    purchase.size ? [purchase.size] : [],
+      colors:   [],
+    });
+    effectiveId = created.id;
+  }
+
+  // Update purchase status (re-read to get latest after potential addProduct)
+  save(PURCHASES_KEY, getPurchases().map(p =>
     p.id === purchaseId
-      ? { ...p, status: '已完成', completedDate: new Date().toISOString().slice(0, 10) }
+      ? { ...p, productId: effectiveId, status: '已完成', completedDate: new Date().toISOString().slice(0, 10) }
       : p
   ));
 
