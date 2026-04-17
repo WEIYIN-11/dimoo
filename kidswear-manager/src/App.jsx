@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import NavBar from './components/NavBar';
-import Home from './pages/Home';
+import NavBar    from './components/NavBar';
+import Tutorial  from './components/Tutorial';
+import Home      from './pages/Home';
 import Dashboard from './pages/Dashboard';
-import Products from './pages/Products';
-import Sales from './pages/Sales';
+import Products  from './pages/Products';
+import Sales     from './pages/Sales';
 import Purchases from './pages/Purchases';
 import Inventory from './pages/Inventory';
+import { isTutorialDone } from './storage';
 
 export default function App() {
+  const [showTutorial, setShowTutorial] = useState(() => !isTutorialDone());
+
   return (
     <>
       <Routes>
@@ -19,6 +24,9 @@ export default function App() {
         <Route path="/sales"      element={<Sales />}     />
       </Routes>
       <NavBar />
+      {showTutorial && (
+        <Tutorial onDone={() => setShowTutorial(false)} />
+      )}
     </>
   );
 }

@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import {
   getPurchases, addPurchase, updatePurchase, confirmReceipt, deletePurchase,
-  DEFAULT_SIZES,
+  getProducts, addProduct,
+  DEFAULT_SIZES, DEFAULT_CATEGORIES,
 } from '../storage';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -13,6 +14,90 @@ function StatusBadge({ status }) {
   return status === '已完成'
     ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 border border-green-200 rounded-xl px-2 py-0.5"><CheckCircle2 size={11} />已完成</span>
     : <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-2 py-0.5"><Clock size={11} />已下單</span>;
+}
+
+// ─── New-product modal (shown when confirming receipt of an unknown product) ──
+function NewProductModal({ purchase, onConfirm, onSkip }) {
+  const [category, setCategory] = useState('');
+  const [price,    setPrice]    = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-[480px] bg-white rounded-t-3xl px-5 pt-6 pb-8 space-y-4 shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-bold text-gray-800">補充商品資料</p>
+            <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+              「{purchase.productName}」尚未在商品清單中。<br />
+              填寫後方便計算利潤，也可略過直接入庫。
+            </p>
+          </div>
+          <span className="text-[11px] font-semibold bg-amber-100 text-amber-700 rounded-xl px-2 py-1 shrink-0">
+            選填
+          </span>
+        </div>
+
+        {/* Readonly name */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">商品名稱</label>
+          <div className="w-full border border-gray-100 bg-gray-50 rounded-xl px-3 py-2.5 text-sm text-gray-500">
+            {purchase.productName}
+          </div>
+        </div>
+
+        {/* Category */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">商品類別</label>
+          <select
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
+          >
+            <option value="">不設定</option>
+            {DEFAULT_CATEGORIES.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Price */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">建議售價 (NT$)</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={price}
+            onChange={e => setPrice(e.target.value)}
+            min={0}
+            max={999999}
+            placeholder="0"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm font-semibold"
+          >
+            略過，直接入庫
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm({ category, price: price ? Number(price) : 0 })}
+            className="flex-1 py-3 rounded-xl bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white text-sm font-bold flex items-center justify-center gap-1.5"
+          >
+            <PackageCheck size={15} /> 建立並入庫
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
 }
 
 // ─── Size chips (multi-select) ────────────────────────────────────────────────
@@ -437,10 +522,11 @@ function PurchaseCard({ p, onConfirm, onDelete, onEdit, isEditing }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Purchases() {
-  const [purchases, setPurchases] = useState([]);
-  const [showForm,  setShowForm]  = useState(false);
-  const [showDone,  setShowDone]  = useState(false);
-  const [editId,    setEditId]    = useState(null);  // id of record being edited
+  const [purchases,        setPurchases]        = useState([]);
+  const [showForm,         setShowForm]         = useState(false);
+  const [showDone,         setShowDone]         = useState(false);
+  const [editId,           setEditId]           = useState(null);
+  const [pendingReceiptId, setPendingReceiptId] = useState(null);  // waiting for product info
 
   function reload() {
     setPurchases(getPurchases());
@@ -457,8 +543,45 @@ export default function Purchases() {
   }
 
   function handleConfirm(id) {
-    confirmReceipt(id);
+    const purchase = purchases.find(p => p.id === id);
+    if (!purchase) return;
+
+    // Check if the product already exists in the product catalogue
+    const productExists = getProducts().some(p => p.name === purchase.productName);
+    if (productExists) {
+      // Product found — confirm immediately
+      confirmReceipt(id);
+      reload();
+    } else {
+      // Unknown product — ask user to fill in details first
+      setPendingReceiptId(id);
+    }
+  }
+
+  /** User filled in category + price and wants to create the product */
+  function handleNewProductConfirm({ category, price }) {
+    const purchase = purchases.find(p => p.id === pendingReceiptId);
+    if (purchase) {
+      addProduct({
+        name:     purchase.productName,
+        category: category || '',
+        cost:     purchase.unitCost,
+        price:    price || 0,
+        sizes:    purchase.size ? [purchase.size] : [],
+        colors:   [],
+      });
+      // confirmReceipt will now find the product by name and add stock
+      confirmReceipt(pendingReceiptId);
+      reload();
+    }
+    setPendingReceiptId(null);
+  }
+
+  /** User chose to skip product creation — auto-create with minimal info */
+  function handleNewProductSkip() {
+    confirmReceipt(pendingReceiptId);
     reload();
+    setPendingReceiptId(null);
   }
 
   function handleDelete(id) {
@@ -585,6 +708,18 @@ export default function Purchases() {
           )}
         </div>
       )}
+
+      {/* ── New-product modal ─────────────────────────────────────────────── */}
+      {pendingReceiptId !== null && (() => {
+        const p = purchases.find(x => x.id === pendingReceiptId);
+        return p ? (
+          <NewProductModal
+            purchase={p}
+            onConfirm={handleNewProductConfirm}
+            onSkip={handleNewProductSkip}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }

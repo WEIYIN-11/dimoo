@@ -369,6 +369,11 @@ export function clearAllData() {
     .forEach(key => localStorage.removeItem(key));
 }
 
+// ─── Tutorial ─────────────────────────────────────────────────────────────────
+const TUTORIAL_KEY = 'kw_tutorial_done';
+export function isTutorialDone()  { return load(TUTORIAL_KEY, false) === true; }
+export function markTutorialDone() { save(TUTORIAL_KEY, true); }
+
 // ─── Computed helpers ─────────────────────────────────────────────────────────
 export function computeStats(sales) {
   const revenue = sales.reduce((sum, s) => sum + s.actualPrice * s.quantity, 0);
