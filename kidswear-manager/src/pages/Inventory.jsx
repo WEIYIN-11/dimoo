@@ -5,7 +5,27 @@ import {
   PackageSearch, Boxes, TrendingDown, ArrowRight,
   Plus, Minus, Store, Warehouse,
 } from 'lucide-react';
-import { getInventoryStats, setStoreStock } from '../storage';
+import { getInventoryStats, setStoreStock, DEFAULT_CATEGORIES } from '../storage';
+
+// ─── Category order helper ────────────────────────────────────────────────────
+function sortedCategoryGroups(items) {
+  const map = new Map();
+  for (const item of items) {
+    const cat = item.product.category || '其他';
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat).push(item);
+  }
+  // Sort: DEFAULT_CATEGORIES first (in order), then others alphabetically
+  const keys = [...map.keys()].sort((a, b) => {
+    const ai = DEFAULT_CATEGORIES.indexOf(a);
+    const bi = DEFAULT_CATEGORIES.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b, 'zh-TW');
+  });
+  return keys.map(cat => ({ cat, items: map.get(cat) }));
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOW_STOCK      = 5;
@@ -492,14 +512,40 @@ export default function Inventory() {
           </button>
         )}
 
-        {/* Inventory cards */}
-        {filteredInventory.map(item => (
-          <InventoryCard
-            key={item.product.id}
-            item={item}
-            onTransfer={handleTransfer}
-          />
-        ))}
+        {/* Inventory cards — grouped by category */}
+        {sortedCategoryGroups(filteredInventory).map(({ cat, items: groupItems }) => {
+          const groupTotal = groupItems.reduce((s, i) => s + i.totalStock, 0);
+          const groupStore = groupItems.reduce((s, i) => s + i.storeStock, 0);
+          return (
+            <div key={cat}>
+              {/* Category header */}
+              <div className="flex items-center justify-between px-1 mb-2 mt-3 first:mt-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-700">{cat}</span>
+                  <span className="text-[10px] bg-gray-200 text-gray-500 rounded-full px-2 py-0.5 font-semibold">
+                    {groupItems.length} 款
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                  <span className="text-brand-500 font-semibold">店 {groupStore}</span>
+                  <span>·</span>
+                  <span className="font-semibold text-gray-600">共 {groupTotal} 件</span>
+                </div>
+              </div>
+
+              {/* Cards in this category */}
+              <div className="space-y-2.5">
+                {groupItems.map(item => (
+                  <InventoryCard
+                    key={item.product.id}
+                    item={item}
+                    onTransfer={handleTransfer}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
 
         {/* Empty state */}
         {filteredInventory.length === 0 && (

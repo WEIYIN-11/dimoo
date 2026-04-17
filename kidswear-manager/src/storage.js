@@ -23,66 +23,12 @@ function save(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-// ─── Default seed products (with sizes + colors) ──────────────────────────────
-const DEFAULT_PRODUCTS = [
-  {
-    id: uid(), name: '小兔子套裝',  category: '套裝',
-    cost: 200, defaultPrice: 480,
-    sizes:  ['80cm', '90cm', '100cm', '110cm'],
-    colors: ['粉色', '藍色', '黃色'],
-  },
-  {
-    id: uid(), name: '嬰兒連身衣',  category: '嬰兒',
-    cost: 150, defaultPrice: 350,
-    sizes:  ['59cm', '66cm', '73cm', '80cm'],
-    colors: ['白色', '粉色', '藍色'],
-  },
-  {
-    id: uid(), name: '兒童T恤',     category: '上衣',
-    cost: 120, defaultPrice: 280,
-    sizes:  ['90cm', '100cm', '110cm', '120cm', '130cm'],
-    colors: ['白色', '黑色', '紅色', '藍色'],
-  },
-  {
-    id: uid(), name: '兒童牛仔褲',  category: '下著',
-    cost: 200, defaultPrice: 450,
-    sizes:  ['90cm', '100cm', '110cm', '120cm', '130cm'],
-    colors: ['深藍', '淺藍', '黑色'],
-  },
-  {
-    id: uid(), name: '兒童洋裝',    category: '洋裝',
-    cost: 250, defaultPrice: 580,
-    sizes:  ['90cm', '100cm', '110cm', '120cm'],
-    colors: ['粉色', '白色', '紫色'],
-  },
-  {
-    id: uid(), name: '兒童外套',    category: '外套',
-    cost: 300, defaultPrice: 680,
-    sizes:  ['90cm', '100cm', '110cm', '120cm', '130cm'],
-    colors: ['紅色', '藍色', '卡其'],
-  },
-  {
-    id: uid(), name: '嬰兒帽子',    category: '配件',
-    cost:  60, defaultPrice: 150,
-    sizes:  ['S', 'M', 'L'],
-    colors: ['白色', '粉色', '藍色', '黃色'],
-  },
-  {
-    id: uid(), name: '兒童涼鞋',    category: '鞋類',
-    cost: 180, defaultPrice: 390,
-    sizes:  ['14cm', '15cm', '16cm', '17cm', '18cm'],
-    colors: ['白色', '粉色', '藍色'],
-  },
-];
+// ─── Default categories (no pre-seeded products) ─────────────────────────────
+export const DEFAULT_CATEGORIES = ['上衣', '褲子', '外套', '襪子', '鞋子', '帽子'];
 
 // ─── Products API ─────────────────────────────────────────────────────────────
 export function getProducts() {
-  const products = load(PRODUCTS_KEY, null);
-  if (!products) {
-    save(PRODUCTS_KEY, DEFAULT_PRODUCTS);
-    return DEFAULT_PRODUCTS;
-  }
-  return products;
+  return load(PRODUCTS_KEY, []);
 }
 
 export function addProduct(product) {
