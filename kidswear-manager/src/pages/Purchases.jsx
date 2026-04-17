@@ -15,30 +15,27 @@ function StatusBadge({ status }) {
     : <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-2 py-0.5"><Clock size={11} />已下單</span>;
 }
 
-// ─── Size chip selector ───────────────────────────────────────────────────────
+// ─── Size chips (multi-select) ────────────────────────────────────────────────
 function SizeChips({ value, onChange }) {
+  // value is an array of selected sizes
+  function toggle(s) {
+    onChange(value.includes(s) ? value.filter(x => x !== s) : [...value, s]);
+  }
+
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 mb-1.5">尺碼</label>
+      <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+        尺碼
+        <span className="font-normal text-gray-400 ml-1">（可複選，不選為不分尺碼）</span>
+      </label>
       <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
-            value === ''
-              ? 'bg-amber-500 border-amber-500 text-white'
-              : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
-          }`}
-        >
-          不分尺碼
-        </button>
         {DEFAULT_SIZES.map(s => (
           <button
             key={s}
             type="button"
-            onClick={() => onChange(s)}
+            onClick={() => toggle(s)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
-              value === s
+              value.includes(s)
                 ? 'bg-amber-500 border-amber-500 text-white'
                 : 'bg-white border-gray-200 text-gray-600 hover:border-amber-300'
             }`}
@@ -47,6 +44,23 @@ function SizeChips({ value, onChange }) {
           </button>
         ))}
       </div>
+      {value.length > 0 && (
+        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-amber-600 font-semibold">已選：</span>
+          {value.map(s => (
+            <span key={s} className="text-[11px] bg-amber-100 text-amber-700 rounded-lg px-1.5 py-0.5 font-semibold">
+              {s}
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-[11px] text-gray-400 hover:text-red-400 ml-0.5"
+          >
+            清除
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -57,7 +71,7 @@ function PurchaseForm({ products, onSave, onCancel }) {
   const [productId,  setProductId]  = useState(products[0]?.id ?? '__manual__');
   const [unitCost,   setUnitCost]   = useState('');
   const [quantity,   setQuantity]   = useState('');
-  const [size,       setSize]       = useState('');
+  const [sizes,      setSizes]      = useState([]);   // multi-select array
   const [manualName, setManualName] = useState('');
   const useManual = productId === '__manual__';
 
@@ -78,14 +92,21 @@ function PurchaseForm({ products, onSave, onCancel }) {
       ? manualName
       : products.find(p => p.id === productId)?.name ?? '';
     if (!supplier || !pName || !unitCost || !quantity) return;
-    onSave({
+
+    const base = {
       supplier,
       productId:   useManual ? '' : productId,
       productName: pName,
       unitCost:    Number(unitCost),
       quantity:    Number(quantity),
-      size,
-    });
+    };
+
+    // No size selected → one record without size; sizes selected → one record per size
+    const records = sizes.length === 0
+      ? [{ ...base, size: '' }]
+      : sizes.map(size => ({ ...base, size }));
+
+    onSave(records);
   }
 
   return (
@@ -137,8 +158,8 @@ function PurchaseForm({ products, onSave, onCancel }) {
         )}
       </div>
 
-      {/* Size chips */}
-      <SizeChips value={size} onChange={setSize} />
+      {/* Size chips (multi-select) */}
+      <SizeChips value={sizes} onChange={setSizes} />
 
       {/* Cost + Qty */}
       <div className="grid grid-cols-2 gap-3">
@@ -157,7 +178,9 @@ function PurchaseForm({ products, onSave, onCancel }) {
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1">數量（件）</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">
+            每尺碼數量（件）
+          </label>
           <input
             type="number"
             inputMode="numeric"
@@ -172,12 +195,27 @@ function PurchaseForm({ products, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Total preview */}
+      {/* Preview */}
       {unitCost && quantity && (
-        <div className="bg-white rounded-xl px-3 py-2 text-sm flex justify-between border border-amber-100">
-          <span className="text-gray-500">預計總成本</span>
-          <span className="font-bold text-amber-700">NT${(Number(unitCost) * Number(quantity)).toLocaleString()}</span>
-        </div>
+        sizes.length > 0 ? (
+          <div className="bg-white rounded-xl px-3 py-2.5 border border-amber-100 space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">{sizes.length} 個尺碼 × {quantity} 件</span>
+              <span className="font-semibold text-gray-700">共 {sizes.length * Number(quantity)} 件</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">預計總成本</span>
+              <span className="font-bold text-amber-700">
+                NT${(Number(unitCost) * Number(quantity) * sizes.length).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl px-3 py-2 text-sm flex justify-between border border-amber-100">
+            <span className="text-gray-500">預計總成本</span>
+            <span className="font-bold text-amber-700">NT${(Number(unitCost) * Number(quantity)).toLocaleString()}</span>
+          </div>
+        )
       )}
 
       <div className="flex gap-2 pt-1">
@@ -270,8 +308,8 @@ export default function Purchases() {
   const pending   = purchases.filter(p => p.status === '已下單').sort((a,b)=>b.date.localeCompare(a.date));
   const completed = purchases.filter(p => p.status === '已完成').sort((a,b)=>b.completedDate.localeCompare(a.completedDate));
 
-  function handleAdd(data) {
-    addPurchase(data);
+  function handleAdd(records) {
+    records.forEach(data => addPurchase(data));
     reload();
     setShowForm(false);
   }
