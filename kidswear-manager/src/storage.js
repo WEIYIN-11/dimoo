@@ -4,6 +4,7 @@ const SALES_KEY      = 'kw_sales';
 const PURCHASES_KEY  = 'kw_purchases';
 const INVENTORY_KEY  = 'kw_inventory';    // { [productId]: totalQty }
 const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
+const ONLINE_INV_KEY = 'kw_online_inv';  // { [productId]: onlineQty }
 const INV_SIZES_KEY  = 'kw_inv_sizes';   // { [productId]: { [size]: qty } }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,20 +82,36 @@ export function getStoreInventory() {
   return load(STORE_INV_KEY, {});
 }
 
+/** Returns { [productId]: onlineQty } — the online-channel portion */
+export function getOnlineInventory() {
+  return load(ONLINE_INV_KEY, {});
+}
+
 /** Returns { [productId]: { [size]: qty } } — size-level breakdown */
 export function getInventorySizes() {
   return load(INV_SIZES_KEY, {});
 }
 
 /**
- * Manually set how many of productId are displayed in-store.
- * Value is clamped to [0, totalStock].
+ * Manually set how many of productId are in-store.
+ * Clamped to [0, total - onlineQty].
  */
 export function setStoreStock(productId, qty) {
-  const total    = getInventory()[productId] ?? 0;
-  const clamped  = Math.max(0, Math.min(total, Number(qty)));
-  const storeInv = getStoreInventory();
-  save(STORE_INV_KEY, { ...storeInv, [productId]: clamped });
+  const total   = getInventory()[productId] ?? 0;
+  const online  = getOnlineInventory()[productId] ?? 0;
+  const clamped = Math.max(0, Math.min(total - online, Number(qty)));
+  save(STORE_INV_KEY, { ...getStoreInventory(), [productId]: clamped });
+}
+
+/**
+ * Manually set how many of productId are in the online channel.
+ * Clamped to [0, total - storeQty].
+ */
+export function setOnlineStock(productId, qty) {
+  const total   = getInventory()[productId] ?? 0;
+  const store   = getStoreInventory()[productId] ?? 0;
+  const clamped = Math.max(0, Math.min(total - store, Number(qty)));
+  save(ONLINE_INV_KEY, { ...getOnlineInventory(), [productId]: clamped });
 }
 
 /** Add stock (positive qty). New stock goes to warehouse by default.
@@ -115,8 +132,7 @@ export function addStock(productId, qty, size = '') {
 }
 
 /**
- * Deduct stock (positive qty). Used when recording a sale.
- * Deducts from total AND from store stock (sales come from the store floor).
+ * Deduct stock (positive qty). Deducts from total, store, and online proportionally.
  * Pass size to also deduct from the per-size breakdown.
  */
 export function deductStock(productId, qty, size = '') {
@@ -127,7 +143,7 @@ export function deductStock(productId, qty, size = '') {
   const newTotal = Math.max(0, (inv[productId] ?? 0) - n);
   save(INVENTORY_KEY, { ...inv, [productId]: newTotal });
 
-  // Update size breakdown if size provided
+  // Update size breakdown
   if (size) {
     const sizeInv   = getInventorySizes();
     const prodSizes = sizeInv[productId] ?? {};
@@ -137,11 +153,17 @@ export function deductStock(productId, qty, size = '') {
     });
   }
 
-  // Keep store stock ≤ new total, and also reduce it (sale = from store)
+  // Clamp store stock to newTotal
   const storeInv = getStoreInventory();
   const curStore = storeInv[productId] ?? 0;
   const newStore = Math.max(0, Math.min(curStore - n, newTotal));
   save(STORE_INV_KEY, { ...storeInv, [productId]: newStore });
+
+  // Clamp online stock to remaining (newTotal - newStore)
+  const onlineInv = getOnlineInventory();
+  const curOnline = onlineInv[productId] ?? 0;
+  const newOnline = Math.max(0, Math.min(curOnline, newTotal - newStore));
+  save(ONLINE_INV_KEY, { ...onlineInv, [productId]: newOnline });
 }
 
 /**
@@ -173,7 +195,7 @@ export function getPendingPurchaseProductIds() {
 }
 
 /**
- * Returns array of { product, stock, totalStock, storeStock, warehouseStock, avgCost, hasPending, sizeBreakdown }
+ * Returns array of { product, stock, totalStock, storeStock, onlineStock, warehouseStock, avgCost, hasPending, sizeBreakdown }
  * sorted by totalStock asc (low stock first).
  * `stock` is kept as an alias for `totalStock` for backward compat.
  */
@@ -181,18 +203,21 @@ export function getInventoryStats() {
   const products   = getProducts();
   const inv        = getInventory();
   const storeInv   = getStoreInventory();
+  const onlineInv  = getOnlineInventory();
   const sizeInv    = getInventorySizes();
   const pendingIds = getPendingPurchaseProductIds();
   return products
     .map(p => {
-      const total = inv[p.id] ?? 0;
-      const store = Math.min(storeInv[p.id] ?? 0, total);
+      const total  = inv[p.id] ?? 0;
+      const store  = Math.min(storeInv[p.id]  ?? 0, total);
+      const online = Math.min(onlineInv[p.id] ?? 0, total - store);
       return {
         product:        p,
         stock:          total,          // backward compat
         totalStock:     total,
         storeStock:     store,
-        warehouseStock: total - store,
+        onlineStock:    online,
+        warehouseStock: total - store - online,
         avgCost:        getAveragePurchaseCost(p.id),
         hasPending:     pendingIds.has(p.id),
         sizeBreakdown:  sizeInv[p.id] ?? {},
@@ -209,18 +234,25 @@ export function getPurchases() {
 /**
  * @param {object} p
  * @param {string} p.supplier    供應商名稱
- * @param {string} p.productId   商品 ID（可為空）
+ * @param {string} p.productId   商品 ID（可為空，會自動以名稱比對）
  * @param {string} p.productName 商品名稱
  * @param {number} p.unitCost    進貨單價
  * @param {number} p.quantity    數量
  * @param {string} [p.size]      尺碼（空字串 = 不分尺碼）
  */
 export function addPurchase({ supplier, productId, productName, unitCost, quantity, size = '' }) {
+  // Auto-link to existing product by name if productId not provided
+  let resolvedId = productId ?? '';
+  if (!resolvedId && productName) {
+    const match = getProducts().find(p => p.name === productName);
+    if (match) resolvedId = match.id;
+  }
+
   const purchase = {
     id:            uid(),
     date:          new Date().toISOString().slice(0, 10),
     supplier,
-    productId:     productId ?? '',
+    productId:     resolvedId,
     productName,
     size,
     unitCost:      Number(unitCost),
@@ -234,24 +266,40 @@ export function addPurchase({ supplier, productId, productName, unitCost, quanti
 }
 
 /**
+ * Update a pending purchase record (only allowed while status = '已下單').
+ */
+export function updatePurchase(id, updates) {
+  save(PURCHASES_KEY, getPurchases().map(p => {
+    if (p.id !== id) return p;
+    const unitCost = Number(updates.unitCost ?? p.unitCost);
+    const quantity = Number(updates.quantity ?? p.quantity);
+    return { ...p, ...updates, unitCost, quantity, totalCost: unitCost * quantity };
+  }));
+}
+
+/**
  * Confirm receipt: set status → 已完成, add stock to inventory.
+ * Falls back to name-based product lookup if productId is empty.
  */
 export function confirmReceipt(purchaseId) {
   const purchases = getPurchases();
   const purchase  = purchases.find(p => p.id === purchaseId);
   if (!purchase || purchase.status !== '已下單') return;
 
+  // Resolve productId: stored id → name lookup → give up
+  const effectiveId = purchase.productId ||
+    getProducts().find(p => p.name === purchase.productName)?.id || '';
+
   // Update status
-  const updated = purchases.map(p =>
+  save(PURCHASES_KEY, purchases.map(p =>
     p.id === purchaseId
       ? { ...p, status: '已完成', completedDate: new Date().toISOString().slice(0, 10) }
       : p
-  );
-  save(PURCHASES_KEY, updated);
+  ));
 
-  // Add stock — link to product if productId exists
-  if (purchase.productId) {
-    addStock(purchase.productId, purchase.quantity, purchase.size ?? '');
+  // Add stock to inventory
+  if (effectiveId) {
+    addStock(effectiveId, purchase.quantity, purchase.size ?? '');
   }
 }
 
@@ -290,10 +338,7 @@ export function addSale({ productId, actualPrice, quantity = 1, size = '', color
   };
 
   save(SALES_KEY, [...getSales(), sale]);
-
-  // Automatically deduct from inventory (including size breakdown if applicable)
   deductStock(productId, quantity, size);
-
   return sale;
 }
 
@@ -304,7 +349,7 @@ export function deleteSale(id) {
 // ─── Reset ────────────────────────────────────────────────────────────────────
 /** Wipe ALL app data from localStorage. Use with caution. */
 export function clearAllData() {
-  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, INV_SIZES_KEY]
+  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, ONLINE_INV_KEY, INV_SIZES_KEY]
     .forEach(key => localStorage.removeItem(key));
 }
 

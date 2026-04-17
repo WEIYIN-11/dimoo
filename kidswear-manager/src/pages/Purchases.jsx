@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   Truck, Plus, CheckCircle2, Clock, Trash2,
-  ChevronDown, PackageCheck,
+  ChevronDown, PackageCheck, Pencil, X, Check,
 } from 'lucide-react';
 import {
-  getPurchases, addPurchase, confirmReceipt, deletePurchase,
+  getPurchases, addPurchase, updatePurchase, confirmReceipt, deletePurchase,
   DEFAULT_SIZES,
 } from '../storage';
 
@@ -62,6 +62,152 @@ function SizeChips({ value, onChange }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Edit purchase form (inline, 已下單 only) ────────────────────────────────
+function EditPurchaseForm({ purchase, onSave, onCancel }) {
+  const [supplier,    setSupplier]    = useState(purchase.supplier);
+  const [productName, setProductName] = useState(purchase.productName);
+  const [unitCost,    setUnitCost]    = useState(String(purchase.unitCost));
+  const [quantity,    setQuantity]    = useState(String(purchase.quantity));
+  const [size,        setSize]        = useState(purchase.size ?? '');
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!supplier || !productName || !unitCost || !quantity) return;
+    onSave(purchase.id, {
+      supplier,
+      productName,
+      unitCost: Number(unitCost),
+      quantity: Number(quantity),
+      size,
+    });
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mt-2 bg-blue-50 border border-blue-200 rounded-2xl p-3 space-y-2.5"
+    >
+      <p className="text-xs font-bold text-blue-700 flex items-center gap-1">
+        <Pencil size={12} /> 編輯採購單
+      </p>
+
+      {/* Supplier */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 mb-1">供應商名稱</label>
+        <input
+          type="text"
+          value={supplier}
+          onChange={e => setSupplier(e.target.value)}
+          required
+          maxLength={60}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white"
+        />
+      </div>
+
+      {/* Product name */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 mb-1">商品名稱</label>
+        <input
+          type="text"
+          value={productName}
+          onChange={e => setProductName(e.target.value)}
+          required
+          maxLength={60}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white"
+        />
+      </div>
+
+      {/* Size (single, read-only label if present) */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 mb-1">尺碼</label>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSize('')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${
+              size === ''
+                ? 'bg-blue-500 border-blue-500 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
+            }`}
+          >
+            不分尺碼
+          </button>
+          {DEFAULT_SIZES.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSize(s)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${
+                size === s
+                  ? 'bg-blue-500 border-blue-500 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cost + Qty */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">進貨單價 (NT$)</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={unitCost}
+            onChange={e => setUnitCost(e.target.value)}
+            required
+            min={0}
+            max={999999}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">數量（件）</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            required
+            min={1}
+            max={9999}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white"
+          />
+        </div>
+      </div>
+
+      {/* Preview */}
+      {unitCost && quantity && (
+        <div className="bg-white rounded-xl px-3 py-2 text-sm flex justify-between border border-blue-100">
+          <span className="text-gray-500">預計總成本</span>
+          <span className="font-bold text-blue-700">
+            NT${(Number(unitCost) * Number(quantity)).toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm font-semibold flex items-center justify-center gap-1"
+        >
+          <X size={14} /> 取消
+        </button>
+        <button
+          type="submit"
+          className="flex-1 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold flex items-center justify-center gap-1"
+        >
+          <Check size={14} /> 儲存
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -210,7 +356,7 @@ function PurchaseForm({ onSave, onCancel }) {
 }
 
 // ─── Purchase card ────────────────────────────────────────────────────────────
-function PurchaseCard({ p, onConfirm, onDelete }) {
+function PurchaseCard({ p, onConfirm, onDelete, onEdit, isEditing }) {
   const isPending = p.status === '已下單';
 
   return (
@@ -241,17 +387,42 @@ function PurchaseCard({ p, onConfirm, onDelete }) {
               {p.completedDate && `　收貨：${p.completedDate}`}
             </p>
           </div>
-          <button
-            onClick={() => onDelete(p.id)}
-            className="w-8 h-8 rounded-xl hover:bg-red-50 text-red-300 hover:text-red-500 flex items-center justify-center shrink-0"
-          >
-            <Trash2 size={14} />
-          </button>
+
+          <div className="flex gap-1 shrink-0">
+            {/* Edit button – only for 已下單 */}
+            {isPending && (
+              <button
+                onClick={() => onEdit(p.id)}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                  isEditing
+                    ? 'bg-blue-100 text-blue-500'
+                    : 'hover:bg-blue-50 text-gray-300 hover:text-blue-400'
+                }`}
+              >
+                <Pencil size={14} />
+              </button>
+            )}
+            <button
+              onClick={() => onDelete(p.id)}
+              className="w-8 h-8 rounded-xl hover:bg-red-50 text-red-300 hover:text-red-500 flex items-center justify-center"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
+
+        {/* Inline edit form */}
+        {isEditing && isPending && (
+          <EditPurchaseForm
+            purchase={p}
+            onSave={onEdit}
+            onCancel={() => onEdit(null)}
+          />
+        )}
       </div>
 
-      {/* Confirm button – only for 已下單 */}
-      {isPending && (
+      {/* Confirm button – only for 已下單, not while editing */}
+      {isPending && !isEditing && (
         <button
           onClick={() => onConfirm(p.id)}
           className="w-full py-3 bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
@@ -269,6 +440,7 @@ export default function Purchases() {
   const [purchases, setPurchases] = useState([]);
   const [showForm,  setShowForm]  = useState(false);
   const [showDone,  setShowDone]  = useState(false);
+  const [editId,    setEditId]    = useState(null);  // id of record being edited
 
   function reload() {
     setPurchases(getPurchases());
@@ -292,7 +464,26 @@ export default function Purchases() {
   function handleDelete(id) {
     if (window.confirm('確定刪除此採購單？')) {
       deletePurchase(id);
+      if (editId === id) setEditId(null);
       reload();
+    }
+  }
+
+  /**
+   * Called from PurchaseCard:
+   *  - onEdit(id)         → toggle edit panel open
+   *  - onEdit(null)       → close edit panel
+   *  - onEdit(id, data)   → save changes (from EditPurchaseForm.onSave)
+   */
+  function handleEdit(idOrNull, updates) {
+    if (updates) {
+      // Save changes
+      updatePurchase(idOrNull, updates);
+      setEditId(null);
+      reload();
+    } else {
+      // Toggle panel
+      setEditId(prev => (prev === idOrNull ? null : idOrNull));
     }
   }
 
@@ -354,6 +545,8 @@ export default function Purchases() {
               p={p}
               onConfirm={handleConfirm}
               onDelete={handleDelete}
+              onEdit={handleEdit}
+              isEditing={editId === p.id}
             />
           ))}
         </div>
@@ -384,6 +577,8 @@ export default function Purchases() {
                   p={p}
                   onConfirm={handleConfirm}
                   onDelete={handleDelete}
+                  onEdit={handleEdit}
+                  isEditing={false}
                 />
               ))}
             </div>
