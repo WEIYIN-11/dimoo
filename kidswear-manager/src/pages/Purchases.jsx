@@ -54,7 +54,7 @@ function SizeChips({ value, onChange }) {
 // ─── Add purchase form ────────────────────────────────────────────────────────
 function PurchaseForm({ products, onSave, onCancel }) {
   const [supplier,   setSupplier]   = useState('');
-  const [productId,  setProductId]  = useState(products[0]?.id ?? '');
+  const [productId,  setProductId]  = useState(products[0]?.id ?? '__manual__');
   const [unitCost,   setUnitCost]   = useState('');
   const [quantity,   setQuantity]   = useState('');
   const [size,       setSize]       = useState('');
