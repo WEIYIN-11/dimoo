@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   getPurchases, addPurchase, confirmReceipt, deletePurchase,
-  getProducts, DEFAULT_SIZES,
+  DEFAULT_SIZES,
 } from '../storage';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -66,42 +66,25 @@ function SizeChips({ value, onChange }) {
 }
 
 // ─── Add purchase form ────────────────────────────────────────────────────────
-function PurchaseForm({ products, onSave, onCancel }) {
-  const [supplier,   setSupplier]   = useState('');
-  const [productId,  setProductId]  = useState(products[0]?.id ?? '__manual__');
-  const [unitCost,   setUnitCost]   = useState('');
-  const [quantity,   setQuantity]   = useState('');
-  const [sizes,      setSizes]      = useState([]);   // multi-select array
-  const [manualName, setManualName] = useState('');
-  const useManual = productId === '__manual__';
-
-  // Auto-fill cost when product changes
-  function handleProductChange(pid) {
-    setProductId(pid);
-    if (pid !== '__manual__') {
-      const p = products.find(x => x.id === pid);
-      if (p) setUnitCost(String(p.cost));
-    } else {
-      setUnitCost('');
-    }
-  }
+function PurchaseForm({ onSave, onCancel }) {
+  const [supplier,     setSupplier]     = useState('');
+  const [productName,  setProductName]  = useState('');
+  const [unitCost,     setUnitCost]     = useState('');
+  const [quantity,     setQuantity]     = useState('');
+  const [sizes,        setSizes]        = useState([]);
 
   function handleSubmit(e) {
     e.preventDefault();
-    const pName = useManual
-      ? manualName
-      : products.find(p => p.id === productId)?.name ?? '';
-    if (!supplier || !pName || !unitCost || !quantity) return;
+    if (!supplier || !productName || !unitCost || !quantity) return;
 
     const base = {
       supplier,
-      productId:   useManual ? '' : productId,
-      productName: pName,
+      productId:   '',
+      productName,
       unitCost:    Number(unitCost),
       quantity:    Number(quantity),
     };
 
-    // No size selected → one record without size; sizes selected → one record per size
     const records = sizes.length === 0
       ? [{ ...base, size: '' }]
       : sizes.map(size => ({ ...base, size }));
@@ -132,30 +115,19 @@ function PurchaseForm({ products, onSave, onCancel }) {
         />
       </div>
 
-      {/* Product picker */}
+      {/* Product name – manual only */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-1">商品</label>
-        <select
-          value={productId}
-          onChange={e => handleProductChange(e.target.value)}
+        <label className="block text-xs font-semibold text-gray-500 mb-1">商品名稱</label>
+        <input
+          type="text"
+          value={productName}
+          onChange={e => setProductName(e.target.value)}
+          required
+          autoFocus
+          maxLength={60}
+          placeholder="輸入商品名稱"
           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
-        >
-          {products.map(p => (
-            <option key={p.id} value={p.id}>{p.name}（{p.category}）</option>
-          ))}
-          <option value="__manual__">── 手動輸入商品 ──</option>
-        </select>
-        {useManual && (
-          <input
-            type="text"
-            value={manualName}
-            onChange={e => setManualName(e.target.value)}
-            required={useManual}
-            maxLength={60}
-            placeholder="輸入商品名稱"
-            className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
-          />
-        )}
+        />
       </div>
 
       {/* Size chips (multi-select) */}
@@ -295,13 +267,11 @@ function PurchaseCard({ p, onConfirm, onDelete }) {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Purchases() {
   const [purchases, setPurchases] = useState([]);
-  const [products,  setProducts]  = useState([]);
   const [showForm,  setShowForm]  = useState(false);
   const [showDone,  setShowDone]  = useState(false);
 
   function reload() {
     setPurchases(getPurchases());
-    setProducts(getProducts());
   }
   useEffect(reload, []);
 
@@ -346,7 +316,6 @@ export default function Purchases() {
       {/* Form */}
       {showForm && (
         <PurchaseForm
-          products={products}
           onSave={handleAdd}
           onCancel={() => setShowForm(false)}
         />
