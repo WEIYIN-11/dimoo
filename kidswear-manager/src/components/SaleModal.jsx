@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, Search, ShoppingCart, Plus, Minus, ChevronRight } from 'lucide-react';
-import { getProducts, addSale } from '../storage';
+import { X, Search, ShoppingCart, Plus, Minus, ChevronRight, Store } from 'lucide-react';
+import { getProducts, addSale, getInventory, getStoreInventory } from '../storage';
 
 // ─── Chip button ──────────────────────────────────────────────────────────────
 function Chip({ label, active, onClick }) {
@@ -27,19 +27,32 @@ function StepDot({ n, current }) {
 }
 
 export default function SaleModal({ open, onClose, onSaved }) {
-  const [products, setProducts] = useState([]);
-  const [search, setSearch]     = useState('');
-  const [selected, setSelected] = useState(null); // product
-  const [size, setSize]         = useState('');
-  const [color, setColor]       = useState('');
-  const [price, setPrice]       = useState('');
-  const [qty, setQty]           = useState(1);
+  const [products,  setProducts]  = useState([]);
+  const [invMap,    setInvMap]    = useState({});   // { productId: totalQty }
+  const [storeMap,  setStoreMap]  = useState({});   // { productId: storeQty }
+  const [search,    setSearch]    = useState('');
+  const [selected,  setSelected]  = useState(null);
+  const [size,      setSize]      = useState('');
+  const [color,     setColor]     = useState('');
+  const [price,     setPrice]     = useState('');
+  const [qty,       setQty]       = useState(1);
   // steps: 1=pick product  2=pick variant  3=confirm qty+price
-  const [step, setStep]         = useState(1);
+  const [step,      setStep]      = useState(1);
 
   useEffect(() => {
     if (open) {
-      setProducts(getProducts());
+      const prods    = getProducts();
+      const inv      = getInventory();
+      const storeInv = getStoreInventory();
+      // Clamp store qty to total
+      const clampedStore = {};
+      for (const p of prods) {
+        const total = inv[p.id] ?? 0;
+        clampedStore[p.id] = Math.min(storeInv[p.id] ?? 0, total);
+      }
+      setProducts(prods);
+      setInvMap(inv);
+      setStoreMap(clampedStore);
       setSearch('');
       setSelected(null);
       setSize('');
@@ -145,28 +158,51 @@ export default function SaleModal({ open, onClose, onSaved }) {
                 <p className="text-center text-gray-400 text-sm mt-10">找不到商品</p>
               )}
               {filtered.map(p => {
-                const variantCount = (p.sizes?.length ?? 0) * Math.max(p.colors?.length ?? 1, 1);
+                const totalQty = invMap[p.id] ?? 0;
+                const storeQty = storeMap[p.id] ?? 0;
+                const outOfStock  = totalQty === 0;
+                const storeEmpty  = storeQty === 0 && totalQty > 0;
                 return (
                   <button
                     key={p.id}
                     onClick={() => handleSelectProduct(p)}
-                    className="w-full flex items-center justify-between bg-gray-50 active:bg-brand-50 border border-gray-200 active:border-brand-300 rounded-2xl px-4 py-4 transition-colors"
+                    className={`w-full flex items-center justify-between border rounded-2xl px-4 py-4 transition-colors active:scale-[0.98] ${
+                      outOfStock
+                        ? 'bg-gray-50 border-gray-200 opacity-50'
+                        : 'bg-gray-50 active:bg-brand-50 border-gray-200 active:border-brand-300'
+                    }`}
                   >
-                    <div className="text-left">
-                      <p className="font-bold text-gray-800">{p.name}</p>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-gray-800">{p.name}</p>
+                        {outOfStock && (
+                          <span className="text-[10px] font-bold text-white bg-gray-400 rounded-full px-1.5 py-0.5">
+                            無庫存
+                          </span>
+                        )}
+                        {storeEmpty && (
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-100 rounded-full px-1.5 py-0.5">
+                            店面缺貨
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {p.category}
                         {p.sizes?.length > 0 && ` · ${p.sizes.join(' / ')}`}
                       </p>
-                      {p.colors?.length > 0 && (
-                        <div className="flex gap-1 mt-1.5 flex-wrap">
-                          {p.colors.map(c => (
-                            <span key={c} className="text-xs bg-white border border-gray-200 rounded-lg px-1.5 py-0.5 text-gray-500">{c}</span>
-                          ))}
+                      {/* Store stock indicator */}
+                      {!outOfStock && (
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="flex items-center gap-0.5 text-[10px] text-brand-600 bg-brand-50 border border-brand-100 rounded-lg px-1.5 py-0.5 font-semibold">
+                            <Store size={9} /> 店面 {storeQty} 件
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            總庫存 {totalQty} 件
+                          </span>
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className="font-bold text-brand-600">NT${p.defaultPrice}</p>
                         <p className="text-xs text-gray-400">成本 NT${p.cost}</p>
@@ -253,7 +289,11 @@ export default function SaleModal({ open, onClose, onSaved }) {
         )}
 
         {/* ── Step 3: Qty + Price ──────────────────────────────────────────── */}
-        {step === 3 && selected && (
+        {step === 3 && selected && (() => {
+          const totalQty = invMap[selected.id] ?? 0;
+          const storeQty = storeMap[selected.id] ?? 0;
+          const storeWarn = qty > storeQty && storeQty >= 0;
+          return (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 pb-8">
             {/* Summary badge */}
             <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3">
@@ -263,7 +303,26 @@ export default function SaleModal({ open, onClose, onSaved }) {
                 {color && <span className="text-xs bg-brand-100 text-brand-700 rounded-lg px-2 py-0.5 font-semibold">{color}</span>}
                 {!size && !color && <span className="text-xs text-brand-400">{selected.category} · 進貨成本 NT${selected.cost}</span>}
               </div>
+              {/* Inventory status row */}
+              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-brand-100">
+                <span className="flex items-center gap-1 text-[11px] text-brand-600 font-semibold">
+                  <Store size={10} /> 店面 {storeQty} 件
+                </span>
+                <span className="text-[11px] text-gray-400">總庫存 {totalQty} 件</span>
+              </div>
             </div>
+
+            {/* Store stock warning */}
+            {storeWarn && storeQty >= 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">⚠️</span>
+                <p className="text-xs text-amber-700">
+                  {storeQty === 0
+                    ? '店面目前無庫存，此筆銷售將從倉庫扣除'
+                    : `店面僅剩 ${storeQty} 件，超出部分將從倉庫扣除`}
+                </p>
+              </div>
+            )}
 
             {/* Quantity – big touch targets */}
             <div>
@@ -337,7 +396,8 @@ export default function SaleModal({ open, onClose, onSaved }) {
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

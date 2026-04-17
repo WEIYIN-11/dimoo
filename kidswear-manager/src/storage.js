@@ -2,7 +2,8 @@
 const PRODUCTS_KEY   = 'kw_products';
 const SALES_KEY      = 'kw_sales';
 const PURCHASES_KEY  = 'kw_purchases';
-const INVENTORY_KEY  = 'kw_inventory';   // { [productId]: number }
+const INVENTORY_KEY  = 'kw_inventory';    // { [productId]: totalQty }
+const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function uid() {
@@ -100,23 +101,50 @@ export function deleteProduct(id) {
 }
 
 // ─── Inventory API ────────────────────────────────────────────────────────────
-/** Returns { [productId]: qty } */
+/** Returns { [productId]: totalQty } */
 export function getInventory() {
   return load(INVENTORY_KEY, {});
 }
 
-/** Add stock (positive qty). Used when confirming receipt. */
-export function addStock(productId, qty) {
-  const inv = getInventory();
-  inv[productId] = (inv[productId] ?? 0) + Number(qty);
-  save(INVENTORY_KEY, inv);
+/** Returns { [productId]: storeQty } — the in-store portion */
+export function getStoreInventory() {
+  return load(STORE_INV_KEY, {});
 }
 
-/** Deduct stock (positive qty). Used when recording a sale. */
-export function deductStock(productId, qty) {
+/**
+ * Manually set how many of productId are displayed in-store.
+ * Value is clamped to [0, totalStock].
+ */
+export function setStoreStock(productId, qty) {
+  const total    = getInventory()[productId] ?? 0;
+  const clamped  = Math.max(0, Math.min(total, Number(qty)));
+  const storeInv = getStoreInventory();
+  save(STORE_INV_KEY, { ...storeInv, [productId]: clamped });
+}
+
+/** Add stock (positive qty). New stock goes to warehouse by default. */
+export function addStock(productId, qty) {
   const inv = getInventory();
-  inv[productId] = Math.max(0, (inv[productId] ?? 0) - Number(qty));
-  save(INVENTORY_KEY, inv);
+  save(INVENTORY_KEY, { ...inv, [productId]: (inv[productId] ?? 0) + Number(qty) });
+}
+
+/**
+ * Deduct stock (positive qty). Used when recording a sale.
+ * Deducts from total AND from store stock (sales come from the store floor).
+ */
+export function deductStock(productId, qty) {
+  const n = Number(qty);
+
+  // Update total
+  const inv       = getInventory();
+  const newTotal  = Math.max(0, (inv[productId] ?? 0) - n);
+  save(INVENTORY_KEY, { ...inv, [productId]: newTotal });
+
+  // Keep store stock ≤ new total, and also reduce it (sale = from store)
+  const storeInv = getStoreInventory();
+  const curStore = storeInv[productId] ?? 0;
+  const newStore = Math.max(0, Math.min(curStore - n, newTotal));
+  save(STORE_INV_KEY, { ...storeInv, [productId]: newStore });
 }
 
 /**
@@ -148,20 +176,29 @@ export function getPendingPurchaseProductIds() {
 }
 
 /**
- * Returns array of { product, stock, avgCost, hasPending }
- * sorted by stock asc (low stock first).
+ * Returns array of { product, stock, totalStock, storeStock, warehouseStock, avgCost, hasPending }
+ * sorted by totalStock asc (low stock first).
+ * `stock` is kept as an alias for `totalStock` for backward compat.
  */
 export function getInventoryStats() {
-  const products    = getProducts();
-  const inv         = getInventory();
-  const pendingIds  = getPendingPurchaseProductIds();
+  const products   = getProducts();
+  const inv        = getInventory();
+  const storeInv   = getStoreInventory();
+  const pendingIds = getPendingPurchaseProductIds();
   return products
-    .map(p => ({
-      product:    p,
-      stock:      inv[p.id] ?? 0,
-      avgCost:    getAveragePurchaseCost(p.id),
-      hasPending: pendingIds.has(p.id),
-    }))
+    .map(p => {
+      const total = inv[p.id] ?? 0;
+      const store = Math.min(storeInv[p.id] ?? 0, total);
+      return {
+        product:        p,
+        stock:          total,          // backward compat
+        totalStock:     total,
+        storeStock:     store,
+        warehouseStock: total - store,
+        avgCost:        getAveragePurchaseCost(p.id),
+        hasPending:     pendingIds.has(p.id),
+      };
+    })
     .sort((a, b) => a.stock - b.stock);
 }
 
