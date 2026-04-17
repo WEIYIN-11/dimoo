@@ -290,9 +290,9 @@ export default function SaleModal({ open, onClose, onSaved }) {
 
         {/* ── Step 3: Qty + Price ──────────────────────────────────────────── */}
         {step === 3 && selected && (() => {
-          const totalQty = invMap[selected.id] ?? 0;
-          const storeQty = storeMap[selected.id] ?? 0;
-          const storeWarn = qty > storeQty && storeQty >= 0;
+          const totalQty  = invMap[selected.id] ?? 0;
+          const storeQty  = storeMap[selected.id] ?? 0;
+          const storeWarn = qty > storeQty;
           return (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 pb-8">
             {/* Summary badge */}
@@ -313,7 +313,7 @@ export default function SaleModal({ open, onClose, onSaved }) {
             </div>
 
             {/* Store stock warning */}
-            {storeWarn && storeQty >= 0 && (
+            {storeWarn && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 flex items-start gap-2">
                 <span className="text-amber-500 mt-0.5">⚠️</span>
                 <p className="text-xs text-amber-700">
@@ -352,6 +352,8 @@ export default function SaleModal({ open, onClose, onSaved }) {
                 inputMode="numeric"
                 value={price}
                 onChange={e => setPrice(e.target.value)}
+                min={1}
+                max={999999}
                 className="w-full border-2 border-gray-200 focus:border-brand-400 rounded-2xl px-4 py-4 text-2xl font-bold text-gray-800 outline-none transition-colors"
               />
             </div>

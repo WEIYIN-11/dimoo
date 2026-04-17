@@ -31,6 +31,7 @@ function TagInput({ label, tags, onChange }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          maxLength={30}
           placeholder="輸入後按 Enter 新增"
           className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brand-400"
         />
@@ -129,6 +130,7 @@ function ProductForm({ initial, onSave, onCancel }) {
           onChange={e => set('name', e.target.value)}
           required
           autoFocus
+          maxLength={60}
           placeholder="請輸入商品名稱"
           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-400 bg-white"
         />
@@ -149,6 +151,8 @@ function ProductForm({ initial, onSave, onCancel }) {
             value={form.cost}
             onChange={e => set('cost', e.target.value)}
             required
+            min={0}
+            max={999999}
             placeholder="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-400 bg-white"
           />
@@ -163,6 +167,8 @@ function ProductForm({ initial, onSave, onCancel }) {
             value={form.defaultPrice}
             onChange={e => set('defaultPrice', e.target.value)}
             required
+            min={0}
+            max={999999}
             placeholder="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-400 bg-white"
           />

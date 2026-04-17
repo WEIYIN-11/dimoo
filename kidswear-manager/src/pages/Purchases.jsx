@@ -105,6 +105,7 @@ function PurchaseForm({ products, onSave, onCancel }) {
           value={supplier}
           onChange={e => setSupplier(e.target.value)}
           required
+          maxLength={60}
           placeholder="例：台北批發商"
           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
         />
@@ -129,6 +130,7 @@ function PurchaseForm({ products, onSave, onCancel }) {
             value={manualName}
             onChange={e => setManualName(e.target.value)}
             required={useManual}
+            maxLength={60}
             placeholder="輸入商品名稱"
             className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
           />
@@ -148,6 +150,8 @@ function PurchaseForm({ products, onSave, onCancel }) {
             value={unitCost}
             onChange={e => setUnitCost(e.target.value)}
             required
+            min={0}
+            max={999999}
             placeholder="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
           />
@@ -161,6 +165,7 @@ function PurchaseForm({ products, onSave, onCancel }) {
             onChange={e => setQuantity(e.target.value)}
             required
             min={1}
+            max={9999}
             placeholder="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-400 bg-white"
           />

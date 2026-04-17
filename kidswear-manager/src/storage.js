@@ -7,21 +7,43 @@ const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
 const INV_SIZES_KEY  = 'kw_inv_sizes';   // { [productId]: { [size]: qty } }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Cryptographically secure ID (replaces Math.random). */
 function uid() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return crypto.randomUUID();
+}
+
+/**
+ * Sanitize parsed JSON: round-trips through JSON.stringify/parse to strip
+ * any prototype-chain pollution from the deserialized value.
+ */
+function sanitize(value) {
+  if (value === null || typeof value !== 'object') return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
 }
 
 function load(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    if (!raw) return fallback;
+    const parsed = sanitize(JSON.parse(raw));
+    return parsed ?? fallback;
   } catch {
     return fallback;
   }
 }
 
 function save(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    // QuotaExceededError — log but do not crash the app
+    console.error('[storage] save failed:', e);
+  }
 }
 
 // ─── Default categories & sizes (no pre-seeded products) ─────────────────────

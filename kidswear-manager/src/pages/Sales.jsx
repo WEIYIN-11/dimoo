@@ -1,58 +1,52 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Calendar, ChevronDown, FileDown } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { getSales, deleteSale } from '../storage';
 
-// ─── Excel export ─────────────────────────────────────────────────────────────
-function exportToExcel(sales, label) {
-  const rows = sales.map(s => ({
-    日期:     s.date,
-    商品名稱: s.productName,
-    尺寸:     s.size  || '—',
-    花色:     s.color || '—',
-    類別:     s.category,
-    數量:     s.quantity,
-    售價:     s.actualPrice,
-    小計:     s.actualPrice * s.quantity,
-    進貨成本: s.cost,
-    毛利:     (s.actualPrice - s.cost) * s.quantity,
-    毛利率:   s.actualPrice > 0
+// ─── CSV export (replaces xlsx to eliminate HIGH CVEs) ────────────────────────
+function exportToCSV(sales, label) {
+  const headers = ['日期','商品名稱','尺寸','花色','類別','數量','售價','小計','進貨成本','毛利','毛利率'];
+
+  const dataRows = sales.map(s => [
+    s.date,
+    s.productName,
+    s.size  || '—',
+    s.color || '—',
+    s.category,
+    s.quantity,
+    s.actualPrice,
+    s.actualPrice * s.quantity,
+    s.cost,
+    (s.actualPrice - s.cost) * s.quantity,
+    s.actualPrice > 0
       ? `${(((s.actualPrice - s.cost) / s.actualPrice) * 100).toFixed(1)}%`
       : '—',
-  }));
+  ]);
 
   // Summary row
-  const totalRev  = sales.reduce((sum, s) => sum + s.actualPrice * s.quantity, 0);
-  const totalCost = sales.reduce((sum, s) => sum + s.cost * s.quantity, 0);
+  const totalRev    = sales.reduce((sum, s) => sum + s.actualPrice * s.quantity, 0);
+  const totalCost   = sales.reduce((sum, s) => sum + s.cost * s.quantity, 0);
   const totalProfit = totalRev - totalCost;
-  rows.push({});
-  rows.push({
-    日期:     '合計',
-    商品名稱: '',
-    尺寸:     '',
-    花色:     '',
-    類別:     '',
-    數量:     sales.reduce((s, r) => s + r.quantity, 0),
-    售價:     '',
-    小計:     totalRev,
-    進貨成本: totalCost,
-    毛利:     totalProfit,
-    毛利率:   totalRev > 0 ? `${((totalProfit / totalRev) * 100).toFixed(1)}%` : '—',
-  });
+  dataRows.push([]);
+  dataRows.push([
+    '合計', '', '', '', '',
+    sales.reduce((s, r) => s + r.quantity, 0),
+    '', totalRev, totalCost, totalProfit,
+    totalRev > 0 ? `${((totalProfit / totalRev) * 100).toFixed(1)}%` : '—',
+  ]);
 
-  const ws = XLSX.utils.json_to_sheet(rows);
+  // Escape and join — wrap cells in double-quotes, escape existing quotes
+  const csv = [headers, ...dataRows]
+    .map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
 
-  // Column widths
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 16 }, { wch: 8 }, { wch: 8 },
-    { wch: 8 },  { wch: 6 },  { wch: 8 }, { wch: 10 },
-    { wch: 10 }, { wch: 10 }, { wch: 8 },
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '銷售紀錄');
-  const filename = `童裝店銷售_${label}_${new Date().toISOString().slice(0,10)}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  // BOM prefix so Excel opens UTF-8 correctly
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `童裝店銷售_${label}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,12 +110,12 @@ export default function Sales() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800">銷售紀錄</h1>
         <button
-          onClick={() => exportToExcel(filtered, exportLabel)}
+          onClick={() => exportToCSV(filtered, exportLabel)}
           disabled={filtered.length === 0}
           className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2.5 rounded-xl active:scale-95 transition-all"
         >
           <FileDown size={16} />
-          匯出 Excel
+          匯出 CSV
         </button>
       </div>
 
