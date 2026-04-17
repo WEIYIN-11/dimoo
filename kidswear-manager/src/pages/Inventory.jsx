@@ -5,7 +5,7 @@ import {
   PackageSearch, Boxes, TrendingDown, ArrowRight,
   Plus, Minus, Store, Warehouse,
 } from 'lucide-react';
-import { getInventoryStats, setStoreStock, DEFAULT_CATEGORIES } from '../storage';
+import { getInventoryStats, setStoreStock, DEFAULT_CATEGORIES, DEFAULT_SIZES } from '../storage';
 
 // ─── Category order helper ────────────────────────────────────────────────────
 function sortedCategoryGroups(items) {
@@ -103,7 +103,7 @@ function StockBar({ stock, max = 30 }) {
 
 // ─── Single inventory card ────────────────────────────────────────────────────
 function InventoryCard({ item, onTransfer }) {
-  const { product, totalStock, storeStock, warehouseStock, avgCost, hasPending } = item;
+  const { product, totalStock, storeStock, warehouseStock, avgCost, hasPending, sizeBreakdown = {} } = item;
   const isZero     = totalStock === 0;
   const isLow      = totalStock > 0 && totalStock < LOW_STOCK;
   const storeEmpty = storeStock === 0 && totalStock > 0;
@@ -225,7 +225,30 @@ function InventoryCard({ item, onTransfer }) {
         </p>
       )}
 
-      {/* Row 5 — manual store stock adjuster */}
+      {/* Row 5 — size breakdown */}
+      {(() => {
+        const inOrder    = DEFAULT_SIZES.filter(s => (sizeBreakdown[s] ?? 0) > 0);
+        const nonDefault = Object.keys(sizeBreakdown)
+          .filter(s => !DEFAULT_SIZES.includes(s) && sizeBreakdown[s] > 0);
+        const sizes = [...inOrder, ...nonDefault];
+        return sizes.length > 0 ? (
+          <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+            <p className="text-[10px] text-gray-400 mb-1.5 font-medium">尺碼庫存</p>
+            <div className="flex flex-wrap gap-1.5">
+              {sizes.map(s => (
+                <span
+                  key={s}
+                  className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-2 py-0.5 font-semibold"
+                >
+                  {s} <span className="opacity-60">×</span> {sizeBreakdown[s]}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null;
+      })()}
+
+      {/* Row 6 — manual store stock adjuster */}
       {totalStock > 0 && (
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
           <div>

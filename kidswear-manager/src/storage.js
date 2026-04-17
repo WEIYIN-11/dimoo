@@ -4,6 +4,7 @@ const SALES_KEY      = 'kw_sales';
 const PURCHASES_KEY  = 'kw_purchases';
 const INVENTORY_KEY  = 'kw_inventory';    // { [productId]: totalQty }
 const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
+const INV_SIZES_KEY  = 'kw_inv_sizes';   // { [productId]: { [size]: qty } }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function uid() {
@@ -23,8 +24,9 @@ function save(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-// ─── Default categories (no pre-seeded products) ─────────────────────────────
+// ─── Default categories & sizes (no pre-seeded products) ─────────────────────
 export const DEFAULT_CATEGORIES = ['上衣', '褲子', '外套', '襪子', '鞋子', '帽子'];
+export const DEFAULT_SIZES      = ['90', '100', '110', '120', '130', '140', '150', '160'];
 
 // ─── Products API ─────────────────────────────────────────────────────────────
 export function getProducts() {
@@ -57,6 +59,11 @@ export function getStoreInventory() {
   return load(STORE_INV_KEY, {});
 }
 
+/** Returns { [productId]: { [size]: qty } } — size-level breakdown */
+export function getInventorySizes() {
+  return load(INV_SIZES_KEY, {});
+}
+
 /**
  * Manually set how many of productId are displayed in-store.
  * Value is clamped to [0, totalStock].
@@ -68,23 +75,45 @@ export function setStoreStock(productId, qty) {
   save(STORE_INV_KEY, { ...storeInv, [productId]: clamped });
 }
 
-/** Add stock (positive qty). New stock goes to warehouse by default. */
-export function addStock(productId, qty) {
+/** Add stock (positive qty). New stock goes to warehouse by default.
+ *  Pass size to also track in the per-size breakdown. */
+export function addStock(productId, qty, size = '') {
+  const n = Number(qty);
   const inv = getInventory();
-  save(INVENTORY_KEY, { ...inv, [productId]: (inv[productId] ?? 0) + Number(qty) });
+  save(INVENTORY_KEY, { ...inv, [productId]: (inv[productId] ?? 0) + n });
+
+  if (size) {
+    const sizeInv   = getInventorySizes();
+    const prodSizes = sizeInv[productId] ?? {};
+    save(INV_SIZES_KEY, {
+      ...sizeInv,
+      [productId]: { ...prodSizes, [size]: (prodSizes[size] ?? 0) + n },
+    });
+  }
 }
 
 /**
  * Deduct stock (positive qty). Used when recording a sale.
  * Deducts from total AND from store stock (sales come from the store floor).
+ * Pass size to also deduct from the per-size breakdown.
  */
-export function deductStock(productId, qty) {
+export function deductStock(productId, qty, size = '') {
   const n = Number(qty);
 
   // Update total
-  const inv       = getInventory();
-  const newTotal  = Math.max(0, (inv[productId] ?? 0) - n);
+  const inv      = getInventory();
+  const newTotal = Math.max(0, (inv[productId] ?? 0) - n);
   save(INVENTORY_KEY, { ...inv, [productId]: newTotal });
+
+  // Update size breakdown if size provided
+  if (size) {
+    const sizeInv   = getInventorySizes();
+    const prodSizes = sizeInv[productId] ?? {};
+    save(INV_SIZES_KEY, {
+      ...sizeInv,
+      [productId]: { ...prodSizes, [size]: Math.max(0, (prodSizes[size] ?? 0) - n) },
+    });
+  }
 
   // Keep store stock ≤ new total, and also reduce it (sale = from store)
   const storeInv = getStoreInventory();
@@ -122,7 +151,7 @@ export function getPendingPurchaseProductIds() {
 }
 
 /**
- * Returns array of { product, stock, totalStock, storeStock, warehouseStock, avgCost, hasPending }
+ * Returns array of { product, stock, totalStock, storeStock, warehouseStock, avgCost, hasPending, sizeBreakdown }
  * sorted by totalStock asc (low stock first).
  * `stock` is kept as an alias for `totalStock` for backward compat.
  */
@@ -130,6 +159,7 @@ export function getInventoryStats() {
   const products   = getProducts();
   const inv        = getInventory();
   const storeInv   = getStoreInventory();
+  const sizeInv    = getInventorySizes();
   const pendingIds = getPendingPurchaseProductIds();
   return products
     .map(p => {
@@ -143,6 +173,7 @@ export function getInventoryStats() {
         warehouseStock: total - store,
         avgCost:        getAveragePurchaseCost(p.id),
         hasPending:     pendingIds.has(p.id),
+        sizeBreakdown:  sizeInv[p.id] ?? {},
       };
     })
     .sort((a, b) => a.stock - b.stock);
@@ -160,14 +191,16 @@ export function getPurchases() {
  * @param {string} p.productName 商品名稱
  * @param {number} p.unitCost    進貨單價
  * @param {number} p.quantity    數量
+ * @param {string} [p.size]      尺碼（空字串 = 不分尺碼）
  */
-export function addPurchase({ supplier, productId, productName, unitCost, quantity }) {
+export function addPurchase({ supplier, productId, productName, unitCost, quantity, size = '' }) {
   const purchase = {
     id:            uid(),
     date:          new Date().toISOString().slice(0, 10),
     supplier,
     productId:     productId ?? '',
     productName,
+    size,
     unitCost:      Number(unitCost),
     quantity:      Number(quantity),
     totalCost:     Number(unitCost) * Number(quantity),
@@ -196,7 +229,7 @@ export function confirmReceipt(purchaseId) {
 
   // Add stock — link to product if productId exists
   if (purchase.productId) {
-    addStock(purchase.productId, purchase.quantity);
+    addStock(purchase.productId, purchase.quantity, purchase.size ?? '');
   }
 }
 
@@ -236,8 +269,8 @@ export function addSale({ productId, actualPrice, quantity = 1, size = '', color
 
   save(SALES_KEY, [...getSales(), sale]);
 
-  // Automatically deduct from inventory
-  deductStock(productId, quantity);
+  // Automatically deduct from inventory (including size breakdown if applicable)
+  deductStock(productId, quantity, size);
 
   return sale;
 }

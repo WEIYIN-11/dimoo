@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   Truck, Plus, CheckCircle2, Clock, Trash2,
-  ChevronDown, PackageCheck, AlertCircle,
+  ChevronDown, PackageCheck,
 } from 'lucide-react';
 import {
   getPurchases, addPurchase, confirmReceipt, deletePurchase,
-  getProducts,
+  getProducts, DEFAULT_SIZES,
 } from '../storage';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -15,12 +15,49 @@ function StatusBadge({ status }) {
     : <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-2 py-0.5"><Clock size={11} />已下單</span>;
 }
 
+// ─── Size chip selector ───────────────────────────────────────────────────────
+function SizeChips({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 mb-1.5">尺碼</label>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
+            value === ''
+              ? 'bg-amber-500 border-amber-500 text-white'
+              : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
+          }`}
+        >
+          不分尺碼
+        </button>
+        {DEFAULT_SIZES.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
+              value === s
+                ? 'bg-amber-500 border-amber-500 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-amber-300'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Add purchase form ────────────────────────────────────────────────────────
 function PurchaseForm({ products, onSave, onCancel }) {
-  const [supplier,  setSupplier]  = useState('');
-  const [productId, setProductId] = useState(products[0]?.id ?? '');
-  const [unitCost,  setUnitCost]  = useState('');
-  const [quantity,  setQuantity]  = useState('');
+  const [supplier,   setSupplier]   = useState('');
+  const [productId,  setProductId]  = useState(products[0]?.id ?? '');
+  const [unitCost,   setUnitCost]   = useState('');
+  const [quantity,   setQuantity]   = useState('');
+  const [size,       setSize]       = useState('');
   const [manualName, setManualName] = useState('');
   const useManual = productId === '__manual__';
 
@@ -47,6 +84,7 @@ function PurchaseForm({ products, onSave, onCancel }) {
       productName: pName,
       unitCost:    Number(unitCost),
       quantity:    Number(quantity),
+      size,
     });
   }
 
@@ -96,6 +134,9 @@ function PurchaseForm({ products, onSave, onCancel }) {
           />
         )}
       </div>
+
+      {/* Size chips */}
+      <SizeChips value={size} onChange={setSize} />
 
       {/* Cost + Qty */}
       <div className="grid grid-cols-2 gap-3">
@@ -167,6 +208,11 @@ function PurchaseCard({ p, onConfirm, onDelete }) {
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-bold text-gray-800">{p.productName}</p>
               <StatusBadge status={p.status} />
+              {p.size && (
+                <span className="text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-2 py-0.5">
+                  {p.size}
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
               供應商：{p.supplier}
@@ -196,7 +242,7 @@ function PurchaseCard({ p, onConfirm, onDelete }) {
           className="w-full py-3 bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
         >
           <PackageCheck size={18} />
-          確認收貨　（＋{p.quantity} 件入庫）
+          確認收貨　（＋{p.quantity} 件{p.size ? `・${p.size}` : ''}入庫）
         </button>
       )}
     </div>
