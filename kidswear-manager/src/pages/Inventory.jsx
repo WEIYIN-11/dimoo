@@ -4,6 +4,7 @@ import {
   Search, X, AlertTriangle, Clock,
   PackageSearch, Boxes, TrendingDown, ArrowRight,
   Plus, Minus, Store, Warehouse, Globe,
+  ChevronDown, ChevronUp, CheckCircle2,
 } from 'lucide-react';
 import {
   getInventoryStats, setStoreStock, setOnlineStock,
@@ -37,11 +38,11 @@ const FILTER_LOW     = 'low';
 const FILTER_PENDING = 'pending';
 const FILTER_STORE   = 'store';
 
-// ─── Summary card at top of list ─────────────────────────────────────────────
+// ─── Summary card ─────────────────────────────────────────────────────────────
 function InventorySummary({ stats }) {
-  const total     = stats.reduce((s, i) => s + i.totalStock,     0);
-  const store     = stats.reduce((s, i) => s + i.storeStock,     0);
-  const online    = stats.reduce((s, i) => s + i.onlineStock,    0);
+  const total     = stats.reduce((s, i) => s + i.totalStock,  0);
+  const store     = stats.reduce((s, i) => s + i.storeStock,  0);
+  const online    = stats.reduce((s, i) => s + i.onlineStock, 0);
   const warehouse = total - store - online;
   const storePct  = total > 0 ? Math.round((store   / total) * 100) : 0;
   const onlinePct = total > 0 ? Math.round((online  / total) * 100) : 0;
@@ -50,32 +51,23 @@ function InventorySummary({ stats }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4">
       <p className="text-xs font-semibold text-gray-500 mb-3">庫存分布總覽</p>
-
-      {/* Four-column totals */}
       <div className="flex gap-1.5">
-        <div className="flex-1 text-center bg-gray-50 rounded-xl py-2.5">
-          <p className={`text-xl font-black ${total === 0 ? 'text-red-500' : 'text-gray-800'}`}>{total}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">總庫存</p>
-        </div>
-        <div className="flex-1 text-center bg-brand-50 rounded-xl py-2.5">
-          <p className="text-xl font-black text-brand-600">{store}</p>
-          <p className="text-[10px] text-brand-400 mt-0.5">🏪 店面</p>
-        </div>
-        <div className="flex-1 text-center bg-purple-50 rounded-xl py-2.5">
-          <p className="text-xl font-black text-purple-600">{online}</p>
-          <p className="text-[10px] text-purple-400 mt-0.5">🌐 網路</p>
-        </div>
-        <div className="flex-1 text-center bg-blue-50 rounded-xl py-2.5">
-          <p className="text-xl font-black text-blue-600">{warehouse}</p>
-          <p className="text-[10px] text-blue-400 mt-0.5">📦 倉庫</p>
-        </div>
+        {[
+          { label: '總庫存', value: total,     className: total === 0 ? 'text-red-500' : 'text-gray-800', bg: 'bg-gray-50' },
+          { label: '🏪 店面', value: store,     className: 'text-brand-600',  bg: 'bg-brand-50'  },
+          { label: '🌐 網路', value: online,    className: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: '📦 倉庫', value: warehouse, className: 'text-blue-600',   bg: 'bg-blue-50'   },
+        ].map(({ label, value, className, bg }) => (
+          <div key={label} className={`flex-1 text-center ${bg} rounded-xl py-2.5`}>
+            <p className={`text-xl font-black ${className}`}>{value}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{label}</p>
+          </div>
+        ))}
       </div>
-
-      {/* 3-segment distribution bar */}
       {total > 0 && (
         <>
           <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden flex">
-            <div className="bg-brand-400 h-full transition-all duration-500" style={{ width: `${storePct}%` }} />
+            <div className="bg-brand-400 h-full transition-all duration-500"  style={{ width: `${storePct}%` }} />
             <div className="bg-purple-400 h-full transition-all duration-500" style={{ width: `${onlinePct}%` }} />
             <div className="bg-blue-300 h-full transition-all duration-500 flex-1" />
           </div>
@@ -92,10 +84,8 @@ function InventorySummary({ stats }) {
 
 // ─── Mini stock bar ───────────────────────────────────────────────────────────
 function StockBar({ stock, max = 30 }) {
-  const pct    = Math.min(100, (stock / max) * 100);
-  const isZero = stock === 0;
-  const isLow  = stock > 0 && stock < LOW_STOCK;
-  const color  = isZero ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-green-400';
+  const pct   = Math.min(100, (stock / max) * 100);
+  const color = stock === 0 ? 'bg-red-500' : stock < LOW_STOCK ? 'bg-orange-400' : 'bg-green-400';
   return (
     <div className="h-1.5 w-16 bg-gray-100 rounded-full overflow-hidden">
       <div className={`h-full rounded-full transition-all duration-300 ${color}`} style={{ width: `${pct}%` }} />
@@ -103,143 +93,211 @@ function StockBar({ stock, max = 30 }) {
   );
 }
 
-// ─── Channel adjuster row ─────────────────────────────────────────────────────
-function ChannelAdjuster({ label, icon, value, max, onDecrement, onIncrement, color }) {
+// ─── Channel stepper (used in both aggregate and variant flows) ───────────────
+function Stepper({ value, max, onDec, onInc, color }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className={`text-xs font-semibold ${color.text}`}>{label}</p>
-        <p className="text-[10px] text-gray-400">
-          {max - value > 0 ? `最多可設 ${max} 件` : '已達上限'}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onDecrement}
-          disabled={value === 0}
-          className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center active:scale-95 transition-all"
-        >
-          <Minus size={13} className="text-gray-600" />
-        </button>
-        <span className="w-7 text-center text-sm font-black text-gray-800">{value}</span>
-        <button
-          onClick={onIncrement}
-          disabled={value >= max}
-          className={`w-8 h-8 rounded-xl disabled:opacity-30 flex items-center justify-center active:scale-95 transition-all ${color.btn}`}
-        >
-          <Plus size={13} />
-        </button>
-      </div>
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={onDec}
+        disabled={value === 0}
+        className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center active:scale-95 transition-all"
+      >
+        <Minus size={13} className="text-gray-600" />
+      </button>
+      <span className={`w-8 text-center text-sm font-black ${color}`}>{value}</span>
+      <button
+        onClick={onInc}
+        disabled={value >= max}
+        className={`w-8 h-8 rounded-xl disabled:opacity-30 flex items-center justify-center active:scale-95 transition-all ${color === 'text-brand-700' ? 'bg-brand-100 hover:bg-brand-200 text-brand-700' : 'bg-purple-100 hover:bg-purple-200 text-purple-700'}`}
+      >
+        <Plus size={13} />
+      </button>
     </div>
   );
 }
 
-// ─── Per-variant channel table ────────────────────────────────────────────────
-function VariantTable({ variants, productId, onSetStore, onSetOnline }) {
+// ─── Variant allocation table (uses local draft state) ────────────────────────
+function VariantTable({ variants, draft, onUpdateStore, onUpdateOnline }) {
   if (!variants || variants.length === 0) return null;
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-100">
-      <p className="text-[10px] font-semibold text-gray-400 mb-2">尺碼 / 花色庫存分配</p>
+      <p className="text-[10px] font-semibold text-gray-400 mb-2">按規格分配</p>
 
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 pb-1.5 border-b border-gray-100">
         <span className="flex-1">規格</span>
-        <span className="w-7 text-center">總</span>
-        <span className="w-[76px] text-center text-brand-400">🏪 店面</span>
-        <span className="w-[76px] text-center text-purple-400">🌐 網路</span>
-        <span className="w-7 text-center text-blue-400">倉</span>
+        <span className="w-6 text-center">總</span>
+        <span className="w-[84px] text-center text-brand-400">🏪 店面</span>
+        <span className="w-[84px] text-center text-purple-400">🌐 網路</span>
+        <span className="w-6 text-center text-blue-400">倉</span>
       </div>
 
-      {/* Variant rows */}
-      {variants.map(v => (
-        <div key={v.key} className="flex items-center gap-1 py-2 border-b border-gray-50 last:border-0">
-          {/* Spec badges */}
-          <div className="flex-1 flex items-center gap-1 flex-wrap min-w-0">
-            {v.size  && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-1.5 py-0.5 font-semibold">{v.size}</span>}
-            {v.color && <span className="text-[10px] bg-pink-50  text-pink-600  border border-pink-200  rounded-lg px-1.5 py-0.5 font-semibold">{v.color}</span>}
-            {!v.size && !v.color && <span className="text-[10px] text-gray-400">全規格</span>}
+      {variants.map(v => {
+        const d         = draft[v.key] ?? { store: v.store, online: v.online };
+        const warehouse = Math.max(0, v.total - d.store - d.online);
+        return (
+          <div key={v.key} className="flex items-center gap-1 py-2 border-b border-gray-50 last:border-0">
+            {/* Spec badges */}
+            <div className="flex-1 flex items-center gap-1 flex-wrap min-w-0">
+              {v.size  && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-1.5 py-0.5 font-semibold">{v.size}</span>}
+              {v.color && <span className="text-[10px] bg-pink-50 text-pink-600 border border-pink-200 rounded-lg px-1.5 py-0.5 font-semibold">{v.color}</span>}
+              {!v.size && !v.color && <span className="text-[10px] text-gray-400">全規格</span>}
+            </div>
+
+            {/* Total */}
+            <span className="w-6 text-center text-xs font-bold text-gray-600">{v.total}</span>
+
+            {/* Store stepper */}
+            <div className="w-[84px] flex items-center justify-center gap-0.5">
+              <button onClick={() => onUpdateStore(v.key, v.size, v.color, d.store - 1)} disabled={d.store === 0}
+                className="w-6 h-6 rounded-lg bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95">−</button>
+              <span className="w-8 text-center text-xs font-black text-brand-700">{d.store}</span>
+              <button onClick={() => onUpdateStore(v.key, v.size, v.color, d.store + 1)} disabled={d.store >= v.total - d.online}
+                className="w-6 h-6 rounded-lg bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95">+</button>
+            </div>
+
+            {/* Online stepper */}
+            <div className="w-[84px] flex items-center justify-center gap-0.5">
+              <button onClick={() => onUpdateOnline(v.key, v.size, v.color, d.online - 1)} disabled={d.online === 0}
+                className="w-6 h-6 rounded-lg bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95">−</button>
+              <span className="w-8 text-center text-xs font-black text-purple-700">{d.online}</span>
+              <button onClick={() => onUpdateOnline(v.key, v.size, v.color, d.online + 1)} disabled={d.online >= v.total - d.store}
+                className="w-6 h-6 rounded-lg bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95">+</button>
+            </div>
+
+            {/* Warehouse */}
+            <span className="w-6 text-center text-xs font-bold text-blue-600">{warehouse}</span>
           </div>
-
-          {/* Total */}
-          <span className="w-7 text-center text-xs font-bold text-gray-600">{v.total}</span>
-
-          {/* Store stepper */}
-          <div className="w-[76px] flex items-center justify-center gap-0.5">
-            <button
-              onClick={() => onSetStore(productId, v.size, v.color, v.store - 1)}
-              disabled={v.store === 0}
-              className="w-5 h-5 rounded-md bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
-            >-</button>
-            <span className="w-7 text-center text-xs font-black text-brand-700">{v.store}</span>
-            <button
-              onClick={() => onSetStore(productId, v.size, v.color, v.store + 1)}
-              disabled={v.store >= v.total - v.online}
-              className="w-5 h-5 rounded-md bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
-            >+</button>
-          </div>
-
-          {/* Online stepper */}
-          <div className="w-[76px] flex items-center justify-center gap-0.5">
-            <button
-              onClick={() => onSetOnline(productId, v.size, v.color, v.online - 1)}
-              disabled={v.online === 0}
-              className="w-5 h-5 rounded-md bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
-            >-</button>
-            <span className="w-7 text-center text-xs font-black text-purple-700">{v.online}</span>
-            <button
-              onClick={() => onSetOnline(productId, v.size, v.color, v.online + 1)}
-              disabled={v.online >= v.total - v.store}
-              className="w-5 h-5 rounded-md bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
-            >+</button>
-          </div>
-
-          {/* Warehouse */}
-          <span className="w-7 text-center text-xs font-bold text-blue-600">{v.warehouse}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-// ─── Single inventory card ────────────────────────────────────────────────────
-function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantStore, onSetVariantOnline }) {
+// ─── Inventory card — collapsible ─────────────────────────────────────────────
+function InventoryCard({ item, onSaveStore, onSaveOnline, onSaveVariantStore, onSaveVariantOnline }) {
   const {
     product, totalStock, storeStock, onlineStock, warehouseStock,
     avgCost, hasPending, sizeBreakdown = {}, variants = [],
   } = item;
   const hasVariants = variants.length > 0;
-  const isZero     = totalStock === 0;
-  const isLow      = totalStock > 0 && totalStock < LOW_STOCK;
-  const storeEmpty = storeStock === 0 && totalStock > 0;
-
+  const isZero    = totalStock === 0;
+  const isLow     = totalStock > 0 && totalStock < LOW_STOCK;
   const storePct  = totalStock > 0 ? Math.round((storeStock  / totalStock) * 100) : 0;
   const onlinePct = totalStock > 0 ? Math.round((onlineStock / totalStock) * 100) : 0;
   const whPct     = 100 - storePct - onlinePct;
 
+  // Local expanded state
+  const [expanded, setExpanded] = useState(false);
+
+  // Draft values (local, not saved until Confirm)
+  const [draftStore,   setDraftStore]   = useState(storeStock);
+  const [draftOnline,  setDraftOnline]  = useState(onlineStock);
+  const [variantDraft, setVariantDraft] = useState({});
+
+  function handleOpen() {
+    setDraftStore(storeStock);
+    setDraftOnline(onlineStock);
+    setVariantDraft(
+      Object.fromEntries(variants.map(v => [v.key, { store: v.store, online: v.online }]))
+    );
+    setExpanded(true);
+  }
+
+  function handleConfirm() {
+    if (hasVariants) {
+      variants.forEach(v => {
+        const d = variantDraft[v.key] ?? { store: v.store, online: v.online };
+        onSaveVariantStore(product.id, v.size, v.color, d.store);
+        onSaveVariantOnline(product.id, v.size, v.color, d.online);
+      });
+    } else {
+      onSaveStore(product.id, draftStore);
+      onSaveOnline(product.id, draftOnline);
+    }
+    setExpanded(false);
+  }
+
+  // Variant draft updaters (clamped)
+  function updateDraftStore(key, _size, _color, qty) {
+    setVariantDraft(prev => {
+      const v   = variants.find(x => x.key === key) ?? { total: 0 };
+      const cur = prev[key] ?? { store: 0, online: 0 };
+      return { ...prev, [key]: { ...cur, store: Math.max(0, Math.min(v.total - cur.online, qty)) } };
+    });
+  }
+  function updateDraftOnline(key, _size, _color, qty) {
+    setVariantDraft(prev => {
+      const v   = variants.find(x => x.key === key) ?? { total: 0 };
+      const cur = prev[key] ?? { store: 0, online: 0 };
+      return { ...prev, [key]: { ...cur, online: Math.max(0, Math.min(v.total - cur.store, qty)) } };
+    });
+  }
+
+  // ── COLLAPSED ────────────────────────────────────────────────────────────────
+  if (!expanded) {
+    return (
+      <button
+        onClick={handleOpen}
+        className={`w-full bg-white rounded-2xl border shadow-sm px-4 py-3 text-left active:scale-[0.99] transition-all ${
+          isZero ? 'border-red-200' : isLow ? 'border-orange-200' : 'border-gray-100'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            {/* Name + status badges */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-bold text-gray-800 text-sm leading-tight">{product.name}</p>
+              <span className="text-[10px] text-gray-400">{product.category}</span>
+              {isZero && <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5">已售罄</span>}
+              {isLow && !isZero && <span className="text-[10px] font-bold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">補貨預警</span>}
+              {hasPending && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">待收貨</span>}
+            </div>
+            {/* Channel mini-summary */}
+            <div className="flex items-center gap-2.5 mt-0.5 text-xs">
+              <span className="text-brand-600  font-semibold">🏪 {storeStock}</span>
+              <span className="text-purple-600 font-semibold">🌐 {onlineStock}</span>
+              <span className="text-blue-600   font-semibold">📦 {warehouseStock}</span>
+              <span className="text-gray-500">
+                共 <span className="font-bold text-gray-700">{totalStock}</span> 件
+              </span>
+            </div>
+            {/* Mini distribution bar */}
+            {totalStock > 0 && (
+              <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden flex">
+                <div className="bg-brand-400  h-full" style={{ width: `${storePct}%` }} />
+                <div className="bg-purple-400 h-full" style={{ width: `${onlinePct}%` }} />
+                <div className="bg-blue-300   h-full flex-1" />
+              </div>
+            )}
+          </div>
+          <ChevronDown size={18} className="text-gray-300 shrink-0" />
+        </div>
+      </button>
+    );
+  }
+
+  // ── EXPANDED ─────────────────────────────────────────────────────────────────
+  const storeEmpty = storeStock === 0 && totalStock > 0;
+
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm px-4 py-3.5 transition-all ${
-      isZero ? 'border-red-200 bg-red-50/30'
-             : isLow ? 'border-orange-200 bg-orange-50/20'
-             : 'border-gray-100'
+    <div className={`bg-white rounded-2xl border shadow-sm px-4 py-3.5 ${
+      isZero ? 'border-red-200 bg-red-50/30' : isLow ? 'border-orange-200 bg-orange-50/20' : 'border-gray-100'
     }`}>
 
-      {/* Row 1 — name + badges + total */}
+      {/* Row 1 — name + badges + total + collapse btn */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-bold text-gray-800 leading-tight">{product.name}</p>
-            {isZero && (
-              <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5">已售罄</span>
-            )}
+            {isZero && <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5">已售罄</span>}
             {isLow && !isZero && (
               <span className="flex items-center gap-0.5 text-[10px] font-bold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
                 <AlertTriangle size={9} /> 補貨預警
               </span>
             )}
-            {storeEmpty && (
-              <span className="text-[10px] font-bold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">店面缺貨</span>
-            )}
+            {storeEmpty && <span className="text-[10px] font-bold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">店面缺貨</span>}
             {hasPending && (
               <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
                 <Clock size={9} /> 待收貨
@@ -248,24 +306,26 @@ function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantSt
           </div>
           <p className="text-xs text-gray-400 mt-0.5">{product.category}</p>
         </div>
-        <div className="text-right shrink-0">
-          <p className={`text-xl font-black leading-none ${
-            isZero ? 'text-red-600' : isLow ? 'text-orange-500' : 'text-gray-800'
-          }`}>
-            {totalStock}<span className="text-xs font-normal text-gray-400 ml-0.5">件</span>
-          </p>
-          <p className="text-[10px] text-gray-400">總庫存</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right">
+            <p className={`text-xl font-black leading-none ${isZero ? 'text-red-600' : isLow ? 'text-orange-500' : 'text-gray-800'}`}>
+              {totalStock}<span className="text-xs font-normal text-gray-400 ml-0.5">件</span>
+            </p>
+            <p className="text-[10px] text-gray-400">總庫存</p>
+          </div>
+          <button
+            onClick={() => setExpanded(false)}
+            className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+          >
+            <ChevronUp size={16} className="text-gray-500" />
+          </button>
         </div>
       </div>
 
       {/* Row 2 — three-channel tiles */}
       <div className="mt-3 grid grid-cols-3 gap-1.5">
-        <div className={`rounded-xl px-2 py-2 text-center border ${
-          storeEmpty ? 'bg-red-50 border-red-100' : 'bg-brand-50 border-brand-100'
-        }`}>
-          <p className={`text-[10px] font-medium mb-0.5 flex items-center justify-center gap-0.5 ${
-            storeEmpty ? 'text-red-400' : 'text-brand-400'
-          }`}>
+        <div className={`rounded-xl px-2 py-2 text-center border ${storeEmpty ? 'bg-red-50 border-red-100' : 'bg-brand-50 border-brand-100'}`}>
+          <p className={`text-[10px] font-medium mb-0.5 flex items-center justify-center gap-0.5 ${storeEmpty ? 'text-red-400' : 'text-brand-400'}`}>
             <Store size={9} /> 店面
           </p>
           <p className={`text-base font-black ${storeEmpty ? 'text-red-500' : 'text-brand-700'}`}>
@@ -290,7 +350,7 @@ function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantSt
         </div>
       </div>
 
-      {/* Row 3 — 3-segment distribution bar */}
+      {/* Row 3 — distribution bar */}
       {totalStock > 0 && (
         <>
           <div className="mt-2.5 h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
@@ -315,7 +375,7 @@ function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantSt
         </div>
         <StockBar stock={totalStock} />
       </div>
-      {avgCost > 0 && (
+      {avgCost > 0 && product.defaultPrice > 0 && (
         <p className="text-xs text-green-600 mt-1">
           毛利率約 <span className="font-bold">
             {(((product.defaultPrice - avgCost) / product.defaultPrice) * 100).toFixed(1)}%
@@ -323,11 +383,11 @@ function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantSt
         </p>
       )}
 
-      {/* Row 5 — size breakdown */}
-      {(() => {
+      {/* Row 5 — size breakdown (only if no variants) */}
+      {!hasVariants && (() => {
         const inOrder    = DEFAULT_SIZES.filter(s => (sizeBreakdown[s] ?? 0) > 0);
         const nonDefault = Object.keys(sizeBreakdown).filter(s => !DEFAULT_SIZES.includes(s) && sizeBreakdown[s] > 0);
-        const sizes = [...inOrder, ...nonDefault];
+        const sizes      = [...inOrder, ...nonDefault];
         return sizes.length > 0 ? (
           <div className="mt-2.5 pt-2.5 border-t border-gray-100">
             <p className="text-[10px] text-gray-400 mb-1.5 font-medium">尺碼庫存</p>
@@ -342,37 +402,72 @@ function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantSt
         ) : null;
       })()}
 
-      {/* Row 6 — channel adjusters (per-variant when available, aggregate otherwise) */}
+      {/* Row 6 — allocation editor (variant table OR aggregate steppers) */}
       {totalStock > 0 && (
         hasVariants ? (
           <VariantTable
             variants={variants}
-            productId={product.id}
-            onSetStore={onSetVariantStore}
-            onSetOnline={onSetVariantOnline}
+            draft={variantDraft}
+            onUpdateStore={updateDraftStore}
+            onUpdateOnline={updateDraftOnline}
           />
         ) : (
-          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2.5">
-            <ChannelAdjuster
-              label="設定店面庫存"
-              icon={Store}
-              value={storeStock}
-              max={totalStock - onlineStock}
-              onDecrement={() => onTransferStore(product.id, storeStock - 1)}
-              onIncrement={() => onTransferStore(product.id, storeStock + 1)}
-              color={{ text: 'text-brand-700', btn: 'bg-brand-100 hover:bg-brand-200 text-brand-700' }}
-            />
-            <ChannelAdjuster
-              label="設定網路庫存"
-              icon={Globe}
-              value={onlineStock}
-              max={totalStock - storeStock}
-              onDecrement={() => onTransferOnline(product.id, onlineStock - 1)}
-              onIncrement={() => onTransferOnline(product.id, onlineStock + 1)}
-              color={{ text: 'text-purple-700', btn: 'bg-purple-100 hover:bg-purple-200 text-purple-700' }}
-            />
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+            {/* Store row */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-brand-700">🏪 店面庫存</p>
+                <p className="text-[10px] text-gray-400">最多可設 {totalStock - draftOnline} 件</p>
+              </div>
+              <Stepper
+                value={draftStore}
+                max={totalStock - draftOnline}
+                onDec={() => setDraftStore(s => Math.max(0, s - 1))}
+                onInc={() => setDraftStore(s => Math.min(totalStock - draftOnline, s + 1))}
+                color="text-brand-700"
+              />
+            </div>
+            {/* Online row */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-purple-700">🌐 網路庫存</p>
+                <p className="text-[10px] text-gray-400">最多可設 {totalStock - draftStore} 件</p>
+              </div>
+              <Stepper
+                value={draftOnline}
+                max={totalStock - draftStore}
+                onDec={() => setDraftOnline(s => Math.max(0, s - 1))}
+                onInc={() => setDraftOnline(s => Math.min(totalStock - draftStore, s + 1))}
+                color="text-purple-700"
+              />
+            </div>
+            {/* Live warehouse preview */}
+            <div className="bg-blue-50 rounded-xl px-3 py-2 flex justify-between items-center">
+              <p className="text-xs text-blue-600">📦 倉庫（剩餘）</p>
+              <p className="text-sm font-black text-blue-700">
+                {Math.max(0, totalStock - draftStore - draftOnline)} 件
+              </p>
+            </div>
           </div>
         )
+      )}
+
+      {/* Confirm / Cancel buttons */}
+      {totalStock > 0 && (
+        <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+          <button
+            onClick={() => setExpanded(false)}
+            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm font-semibold hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white text-sm font-bold flex items-center justify-center gap-1.5 transition-all"
+          >
+            <CheckCircle2 size={15} /> 確認分配
+          </button>
+        </div>
       )}
     </div>
   );
@@ -427,9 +522,9 @@ export default function Inventory() {
   const allStats = useMemo(() => getInventoryStats(), [refresh]);
 
   const totalItems          = allStats.length;
-  const totalStock          = allStats.reduce((s, i) => s + i.totalStock,     0);
-  const totalStoreStock     = allStats.reduce((s, i) => s + i.storeStock,     0);
-  const totalOnlineStock    = allStats.reduce((s, i) => s + i.onlineStock,    0);
+  const totalStock          = allStats.reduce((s, i) => s + i.totalStock,  0);
+  const totalStoreStock     = allStats.reduce((s, i) => s + i.storeStock,  0);
+  const totalOnlineStock    = allStats.reduce((s, i) => s + i.onlineStock, 0);
   const totalWarehouseStock = totalStock - totalStoreStock - totalOnlineStock;
   const lowCount            = allStats.filter(s => s.stock < LOW_STOCK).length;
   const pendingCount        = allStats.filter(s => s.hasPending).length;
@@ -437,25 +532,13 @@ export default function Inventory() {
 
   const tick = useCallback(() => setRefresh(r => r + 1), []);
 
-  const handleTransferStore = useCallback((productId, qty) => {
-    setStoreStock(productId, qty);
-    tick();
-  }, [tick]);
+  // Aggregate (fallback for products without variants)
+  const handleSaveStore  = useCallback((id, qty) => { setStoreStock(id, qty);  tick(); }, [tick]);
+  const handleSaveOnline = useCallback((id, qty) => { setOnlineStock(id, qty); tick(); }, [tick]);
 
-  const handleTransferOnline = useCallback((productId, qty) => {
-    setOnlineStock(productId, qty);
-    tick();
-  }, [tick]);
-
-  const handleSetVariantStore = useCallback((productId, size, color, qty) => {
-    setVariantStore(productId, size, color, qty);
-    tick();
-  }, [tick]);
-
-  const handleSetVariantOnline = useCallback((productId, size, color, qty) => {
-    setVariantOnline(productId, size, color, qty);
-    tick();
-  }, [tick]);
+  // Per-variant
+  const handleSaveVariantStore  = useCallback((id, size, color, qty) => { setVariantStore(id, size, color, qty);  tick(); }, [tick]);
+  const handleSaveVariantOnline = useCallback((id, size, color, qty) => { setVariantOnline(id, size, color, qty); tick(); }, [tick]);
 
   const filteredInventory = useMemo(() => {
     let list = allStats;
@@ -470,10 +553,7 @@ export default function Inventory() {
     return list;
   }, [allStats, searchTerm, activeFilter]);
 
-  const handleClear = useCallback(() => {
-    setSearchTerm('');
-    setActiveFilter(FILTER_ALL);
-  }, []);
+  const handleClear = useCallback(() => { setSearchTerm(''); setActiveFilter(FILTER_ALL); }, []);
 
   const filterBtns = [
     { key: FILTER_ALL,     label: '全部',    count: totalItems,      colorKey: 'brand'  },
@@ -481,7 +561,6 @@ export default function Inventory() {
     { key: FILTER_STORE,   label: '店面缺貨', count: storeEmptyCount, colorKey: 'purple' },
     { key: FILTER_PENDING, label: '待收貨',  count: pendingCount,    colorKey: 'amber'  },
   ];
-
   const colorMap = {
     brand:  { active: 'bg-brand-600  text-white border-brand-600',  dot: 'bg-brand-400'  },
     orange: { active: 'bg-orange-500 text-white border-orange-500', dot: 'bg-orange-400' },
@@ -495,7 +574,6 @@ export default function Inventory() {
       {/* ── Sticky header ─────────────────────────────────────────────── */}
       <div className="bg-white px-4 pt-10 pb-4 shadow-sm sticky top-0 z-10">
 
-        {/* Title + four totals */}
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <Boxes size={20} className="text-brand-500" /> 庫存管理
@@ -528,7 +606,7 @@ export default function Inventory() {
           </div>
         </div>
 
-        {/* Search bar */}
+        {/* Search */}
         <div className="relative">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
@@ -572,12 +650,10 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* ── List area ─────────────────────────────────────────────────── */}
+      {/* ── List ──────────────────────────────────────────────────────── */}
       <div className="px-4 pt-4 space-y-2.5">
 
-        {activeFilter === FILTER_ALL && !searchTerm && (
-          <InventorySummary stats={allStats} />
-        )}
+        {activeFilter === FILTER_ALL && !searchTerm && <InventorySummary stats={allStats} />}
 
         {(searchTerm || activeFilter !== FILTER_ALL) && filteredInventory.length > 0 && (
           <div className="flex items-center justify-between text-xs text-gray-400 px-1">
@@ -608,13 +684,13 @@ export default function Inventory() {
             <Store size={18} className="text-purple-500 shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-bold text-purple-700">{storeEmptyCount} 件商品店面缺貨</p>
-              <p className="text-xs text-purple-500">點擊查看並設定店面庫存</p>
+              <p className="text-xs text-purple-500">點擊商品並設定店面庫存數量</p>
             </div>
             <ArrowRight size={16} className="text-purple-400" />
           </button>
         )}
 
-        {/* Inventory cards grouped by category */}
+        {/* Cards grouped by category */}
         {sortedCategoryGroups(filteredInventory).map(({ cat, items: groupItems }) => {
           const groupTotal  = groupItems.reduce((s, i) => s + i.totalStock,  0);
           const groupStore  = groupItems.reduce((s, i) => s + i.storeStock,  0);
@@ -636,15 +712,15 @@ export default function Inventory() {
                   <span className="font-semibold text-gray-600">共 {groupTotal} 件</span>
                 </div>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {groupItems.map(item => (
                   <InventoryCard
                     key={item.product.id}
                     item={item}
-                    onTransferStore={handleTransferStore}
-                    onTransferOnline={handleTransferOnline}
-                    onSetVariantStore={handleSetVariantStore}
-                    onSetVariantOnline={handleSetVariantOnline}
+                    onSaveStore={handleSaveStore}
+                    onSaveOnline={handleSaveOnline}
+                    onSaveVariantStore={handleSaveVariantStore}
+                    onSaveVariantOnline={handleSaveVariantOnline}
                   />
                 ))}
               </div>
