@@ -22,20 +22,15 @@ const FLOATS = [
 ];
 
 export default function Login() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, error: authError } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
 
   async function handleLogin() {
     setLoading(true);
-    setError('');
     try {
       await signInWithGoogle();
-    } catch (e) {
-      if (e.code !== 'auth/popup-closed-by-user') {
-        setError('登入失敗，請再試一次');
-      }
-    } finally {
+      // Page will redirect to Google — loading stays true
+    } catch {
       setLoading(false);
     }
   }
@@ -86,8 +81,8 @@ export default function Login() {
           {loading ? '登入中…' : '使用 Google 帳戶登入'}
         </button>
 
-        {error && (
-          <p className="mt-3 text-xs text-red-500 text-center">{error}</p>
+        {authError && (
+          <p className="mt-3 text-xs text-red-500 text-center">{authError}</p>
         )}
 
         <p className="text-[11px] text-gray-300 text-center mt-6 leading-relaxed">
