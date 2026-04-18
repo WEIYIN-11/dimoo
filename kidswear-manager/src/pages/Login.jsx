@@ -29,7 +29,8 @@ export default function Login() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      // Page will redirect to Google — loading stays true
+      // If popup succeeds, auth state updates automatically.
+      // If redirect, page navigates away — keep loading.
     } catch {
       setLoading(false);
     }

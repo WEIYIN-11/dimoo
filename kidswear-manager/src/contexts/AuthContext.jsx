@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import {
   getAuth,
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut,
@@ -19,7 +20,7 @@ export function AuthProvider({ children }) {
   const auth = getAuth(app);
 
   useEffect(() => {
-    // Handle the redirect result when user comes back from Google
+    // Pick up redirect result when returning from Google
     getRedirectResult(auth)
       .then(result => {
         if (result?.user) {
@@ -28,9 +29,7 @@ export function AuthProvider({ children }) {
         }
       })
       .catch(e => {
-        if (e.code !== 'auth/cancelled-popup-request') {
-          setError(`登入失敗：${e.code}`);
-        }
+        setError(e.message ?? e.code ?? '登入失敗');
       });
 
     return onAuthStateChanged(auth, u => {
@@ -48,7 +47,22 @@ export function AuthProvider({ children }) {
   async function signInWithGoogle() {
     setError('');
     const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
+    // Try popup first; on mobile browsers that block popups, fall back to redirect
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (popupErr) {
+      if (
+        popupErr.code === 'auth/popup-blocked' ||
+        popupErr.code === 'auth/popup-closed-by-user' ||
+        popupErr.code === 'auth/cancelled-popup-request'
+      ) {
+        // Silently fall back to redirect flow
+        await signInWithRedirect(auth, provider);
+      } else {
+        setError(popupErr.message ?? popupErr.code ?? '登入失敗');
+        throw popupErr;
+      }
+    }
   }
 
   async function logout() {
