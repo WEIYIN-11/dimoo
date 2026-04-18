@@ -271,9 +271,23 @@ export function getInventoryStats() {
   const pendingIds = getPendingPurchaseProductIds();
   return products
     .map(p => {
-      const total  = inv[p.id] ?? 0;
-      const store  = Math.min(storeInv[p.id]  ?? 0, total);
-      const online = Math.min(onlineInv[p.id] ?? 0, total - store);
+      const total       = inv[p.id] ?? 0;
+      const variantList = getProductVariantList(p.id);
+
+      // For products with variants, aggregate store/online from variant-level data
+      // so that variant allocation is always reflected in the summary.
+      let store, online;
+      if (variantList.length > 0) {
+        store  = variantList.reduce((s, v) => s + v.store,  0);
+        online = variantList.reduce((s, v) => s + v.online, 0);
+      } else {
+        store  = Math.min(storeInv[p.id]  ?? 0, total);
+        online = Math.min(onlineInv[p.id] ?? 0, total - store);
+      }
+
+      store  = Math.min(store,  total);
+      online = Math.min(online, total - store);
+
       return {
         product:        p,
         stock:          total,
@@ -284,7 +298,7 @@ export function getInventoryStats() {
         avgCost:        getAveragePurchaseCost(p.id),
         hasPending:     pendingIds.has(p.id),
         sizeBreakdown:  sizeInv[p.id] ?? {},
-        variants:       getProductVariantList(p.id),
+        variants:       variantList,
       };
     })
     .sort((a, b) => a.stock - b.stock);
