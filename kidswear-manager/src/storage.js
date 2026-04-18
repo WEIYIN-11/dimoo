@@ -1,4 +1,13 @@
-// ─── Keys ────────────────────────────────────────────────────────────────────
+// ─── Auth-scoped key prefix ───────────────────────────────────────────────────
+let _uid = '';
+
+/** Called by AuthContext once Firebase resolves the signed-in user. */
+export function setCurrentUser(uid) { _uid = uid || ''; }
+
+/** Prefix a storage key with the current user's uid. */
+function k(base) { return _uid ? `${_uid}_${base}` : base; }
+
+// ─── Base keys (without uid prefix) ──────────────────────────────────────────
 const PRODUCTS_KEY   = 'kw_products';
 const SALES_KEY      = 'kw_sales';
 const PURCHASES_KEY  = 'kw_purchases';
@@ -7,25 +16,23 @@ const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
 const ONLINE_INV_KEY = 'kw_online_inv';  // { [productId]: onlineQty }
 const INV_SIZES_KEY  = 'kw_inv_sizes';   // { [productId]: { [size]: qty } }
 const VARIANTS_KEY   = 'kw_variants';    // { [productId]: { [variantKey]: { total, store, online } } }
+const TUTORIAL_KEY   = 'kw_tutorial_done';
+const SETTINGS_KEY   = 'kw_settings';
+
+const ALL_KEYS = [
+  PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY,
+  INVENTORY_KEY, STORE_INV_KEY, ONLINE_INV_KEY, INV_SIZES_KEY, VARIANTS_KEY,
+  TUTORIAL_KEY, SETTINGS_KEY,
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Cryptographically secure ID (replaces Math.random). */
-function uid() {
-  return crypto.randomUUID();
-}
+/** Cryptographically secure ID. */
+function uid() { return crypto.randomUUID(); }
 
-/**
- * Sanitize parsed JSON: round-trips through JSON.stringify/parse to strip
- * any prototype-chain pollution from the deserialized value.
- */
 function sanitize(value) {
   if (value === null || typeof value !== 'object') return value;
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(JSON.stringify(value)); } catch { return null; }
 }
 
 function load(key, fallback) {
@@ -43,17 +50,31 @@ function save(key, data) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    // QuotaExceededError — log but do not crash the app
     console.error('[storage] save failed:', e);
+  }
+}
+
+// ─── Data migration (non-prefixed → uid-prefixed) ────────────────────────────
+/**
+ * On first sign-in, copy any data from the old non-prefixed keys to the
+ * uid-prefixed keys so existing users don't lose their data.
+ */
+export function migrateToUser(uidStr) {
+  if (!uidStr) return;
+  for (const base of ALL_KEYS) {
+    const newKey = `${uidStr}_${base}`;
+    const oldRaw = localStorage.getItem(base);
+    if (oldRaw && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, oldRaw);
+      localStorage.removeItem(base);
+    }
   }
 }
 
 // ─── Variant helpers (size × color granularity) ──────────────────────────────
 
-/** Build a composite variant key from size and color (both may be empty). */
 function vk(size = '', color = '') { return `${size}::${color}`; }
 
-/** Parse a variant key back to { size, color }. */
 export function parseVariantKey(key = '') {
   const sep = key.indexOf('::');
   return sep < 0
@@ -61,26 +82,20 @@ export function parseVariantKey(key = '') {
     : { size: key.slice(0, sep), color: key.slice(sep + 2) };
 }
 
-function getAllVariants() { return load(VARIANTS_KEY, {}); }
+function getAllVariants() { return load(k(VARIANTS_KEY), {}); }
 
-/** Atomically update one variant entry with an updater function. */
 function patchVariant(productId, size, color, updater) {
   const all  = getAllVariants();
   const prod = all[productId] ?? {};
   const key  = vk(size, color);
   const cur  = prod[key] ?? { total: 0, store: 0, online: 0 };
-  save(VARIANTS_KEY, { ...all, [productId]: { ...prod, [key]: updater(cur) } });
+  save(k(VARIANTS_KEY), { ...all, [productId]: { ...prod, [key]: updater(cur) } });
 }
 
-/** Returns { [variantKey]: { total, store, online } } for one product. */
 export function getProductVariants(productId) {
   return getAllVariants()[productId] ?? {};
 }
 
-/**
- * Returns a sorted array of { key, size, color, total, store, online, warehouse }
- * for all variants of a product.
- */
 export function getProductVariantList(productId) {
   const variants = getProductVariants(productId);
   return Object.entries(variants)
@@ -102,7 +117,6 @@ export function getProductVariantList(productId) {
     });
 }
 
-/** Set store qty for one variant (clamped to [0, total − online]). */
 export function setVariantStore(productId, size, color, qty) {
   patchVariant(productId, size, color, v => ({
     ...v,
@@ -110,7 +124,6 @@ export function setVariantStore(productId, size, color, qty) {
   }));
 }
 
-/** Set online qty for one variant (clamped to [0, total − store]). */
 export function setVariantOnline(productId, size, color, qty) {
   patchVariant(productId, size, color, v => ({
     ...v,
@@ -118,128 +131,108 @@ export function setVariantOnline(productId, size, color, qty) {
   }));
 }
 
-// ─── Default categories & sizes (no pre-seeded products) ─────────────────────
+// ─── Default categories & sizes ───────────────────────────────────────────────
 export const DEFAULT_CATEGORIES = ['上衣', '褲子', '外套', '襪子', '鞋子', '帽子'];
 export const DEFAULT_SIZES      = ['90', '100', '110', '120', '130', '140', '150', '160'];
 
+// ─── Settings API ─────────────────────────────────────────────────────────────
+const DEFAULT_SETTINGS = { lowStockThreshold: 5 };
+
+export function getSettings() {
+  return { ...DEFAULT_SETTINGS, ...load(k(SETTINGS_KEY), {}) };
+}
+
+export function saveSettings(updates) {
+  save(k(SETTINGS_KEY), { ...getSettings(), ...updates });
+}
+
+export function getLowStockThreshold() {
+  return getSettings().lowStockThreshold ?? 5;
+}
+
 // ─── Products API ─────────────────────────────────────────────────────────────
 export function getProducts() {
-  return load(PRODUCTS_KEY, []);
+  return load(k(PRODUCTS_KEY), []);
 }
 
 export function addProduct(product) {
-  const products = getProducts();
+  const products   = getProducts();
   const newProduct = { sizes: [], colors: [], ...product, id: uid() };
-  save(PRODUCTS_KEY, [...products, newProduct]);
+  save(k(PRODUCTS_KEY), [...products, newProduct]);
   return newProduct;
 }
 
 export function updateProduct(id, updates) {
-  save(PRODUCTS_KEY, getProducts().map(p => p.id === id ? { ...p, ...updates } : p));
+  save(k(PRODUCTS_KEY), getProducts().map(p => p.id === id ? { ...p, ...updates } : p));
 }
 
 export function deleteProduct(id) {
-  save(PRODUCTS_KEY, getProducts().filter(p => p.id !== id));
+  save(k(PRODUCTS_KEY), getProducts().filter(p => p.id !== id));
 }
 
 // ─── Inventory API ────────────────────────────────────────────────────────────
-/** Returns { [productId]: totalQty } */
-export function getInventory() {
-  return load(INVENTORY_KEY, {});
-}
+export function getInventory()       { return load(k(INVENTORY_KEY),  {}); }
+export function getStoreInventory()  { return load(k(STORE_INV_KEY),  {}); }
+export function getOnlineInventory() { return load(k(ONLINE_INV_KEY), {}); }
+export function getInventorySizes()  { return load(k(INV_SIZES_KEY),  {}); }
 
-/** Returns { [productId]: storeQty } — the in-store portion */
-export function getStoreInventory() {
-  return load(STORE_INV_KEY, {});
-}
-
-/** Returns { [productId]: onlineQty } — the online-channel portion */
-export function getOnlineInventory() {
-  return load(ONLINE_INV_KEY, {});
-}
-
-/** Returns { [productId]: { [size]: qty } } — size-level breakdown */
-export function getInventorySizes() {
-  return load(INV_SIZES_KEY, {});
-}
-
-/**
- * Manually set how many of productId are in-store.
- * Clamped to [0, total - onlineQty].
- */
 export function setStoreStock(productId, qty) {
   const total   = getInventory()[productId] ?? 0;
   const online  = getOnlineInventory()[productId] ?? 0;
   const clamped = Math.max(0, Math.min(total - online, Number(qty)));
-  save(STORE_INV_KEY, { ...getStoreInventory(), [productId]: clamped });
+  save(k(STORE_INV_KEY), { ...getStoreInventory(), [productId]: clamped });
 }
 
-/**
- * Manually set how many of productId are in the online channel.
- * Clamped to [0, total - storeQty].
- */
 export function setOnlineStock(productId, qty) {
   const total   = getInventory()[productId] ?? 0;
   const store   = getStoreInventory()[productId] ?? 0;
   const clamped = Math.max(0, Math.min(total - store, Number(qty)));
-  save(ONLINE_INV_KEY, { ...getOnlineInventory(), [productId]: clamped });
+  save(k(ONLINE_INV_KEY), { ...getOnlineInventory(), [productId]: clamped });
 }
 
-/** Add stock (positive qty). New stock goes to warehouse by default.
- *  Pass size / color to track in per-size and per-variant breakdowns. */
 export function addStock(productId, qty, size = '', color = '') {
   const n = Number(qty);
   const inv = getInventory();
-  save(INVENTORY_KEY, { ...inv, [productId]: (inv[productId] ?? 0) + n });
+  save(k(INVENTORY_KEY), { ...inv, [productId]: (inv[productId] ?? 0) + n });
 
   if (size) {
     const sizeInv   = getInventorySizes();
     const prodSizes = sizeInv[productId] ?? {};
-    save(INV_SIZES_KEY, {
+    save(k(INV_SIZES_KEY), {
       ...sizeInv,
       [productId]: { ...prodSizes, [size]: (prodSizes[size] ?? 0) + n },
     });
   }
 
-  // Per-variant tracking (size × color)
   patchVariant(productId, size, color, v => ({ ...v, total: v.total + n }));
 }
 
-/**
- * Deduct stock (positive qty). Deducts from total, store, and online proportionally.
- * Pass size / color to also deduct from per-size and per-variant breakdowns.
- */
 export function deductStock(productId, qty, size = '', color = '') {
   const n = Number(qty);
 
-  // Update total
   const inv      = getInventory();
   const newTotal = Math.max(0, (inv[productId] ?? 0) - n);
-  save(INVENTORY_KEY, { ...inv, [productId]: newTotal });
+  save(k(INVENTORY_KEY), { ...inv, [productId]: newTotal });
 
-  // Update size breakdown
   if (size) {
     const sizeInv   = getInventorySizes();
     const prodSizes = sizeInv[productId] ?? {};
-    save(INV_SIZES_KEY, {
+    save(k(INV_SIZES_KEY), {
       ...sizeInv,
       [productId]: { ...prodSizes, [size]: Math.max(0, (prodSizes[size] ?? 0) - n) },
     });
   }
 
-  // Clamp store stock to newTotal
   const storeInv = getStoreInventory();
   const curStore = storeInv[productId] ?? 0;
   const newStore = Math.max(0, Math.min(curStore - n, newTotal));
-  save(STORE_INV_KEY, { ...storeInv, [productId]: newStore });
+  save(k(STORE_INV_KEY), { ...storeInv, [productId]: newStore });
 
-  // Clamp online stock to remaining (newTotal - newStore)
   const onlineInv = getOnlineInventory();
   const curOnline = onlineInv[productId] ?? 0;
   const newOnline = Math.max(0, Math.min(curOnline, newTotal - newStore));
-  save(ONLINE_INV_KEY, { ...onlineInv, [productId]: newOnline });
+  save(k(ONLINE_INV_KEY), { ...onlineInv, [productId]: newOnline });
 
-  // Per-variant deduction (size × color)
   patchVariant(productId, size, color, v => {
     const vTotal  = Math.max(0, v.total - n);
     const vStore  = Math.max(0, Math.min(v.store,  vTotal));
@@ -248,10 +241,6 @@ export function deductStock(productId, qty, size = '', color = '') {
   });
 }
 
-/**
- * Weighted-average cost from *completed* purchases for a given productId.
- * Falls back to product.cost if no purchase history exists.
- */
 export function getAveragePurchaseCost(productId) {
   const purchases = getPurchases().filter(
     p => p.productId === productId && p.status === '已完成'
@@ -265,9 +254,6 @@ export function getAveragePurchaseCost(productId) {
   return totalQty > 0 ? Math.round(totalCost / totalQty) : 0;
 }
 
-/**
- * Returns a Set of productIds that currently have at least one '已下單' purchase.
- */
 export function getPendingPurchaseProductIds() {
   return new Set(
     getPurchases()
@@ -276,11 +262,6 @@ export function getPendingPurchaseProductIds() {
   );
 }
 
-/**
- * Returns array of { product, stock, totalStock, storeStock, onlineStock, warehouseStock, avgCost, hasPending, sizeBreakdown }
- * sorted by totalStock asc (low stock first).
- * `stock` is kept as an alias for `totalStock` for backward compat.
- */
 export function getInventoryStats() {
   const products   = getProducts();
   const inv        = getInventory();
@@ -295,7 +276,7 @@ export function getInventoryStats() {
       const online = Math.min(onlineInv[p.id] ?? 0, total - store);
       return {
         product:        p,
-        stock:          total,          // backward compat
+        stock:          total,
         totalStock:     total,
         storeStock:     store,
         onlineStock:    online,
@@ -311,20 +292,10 @@ export function getInventoryStats() {
 
 // ─── Purchases API ────────────────────────────────────────────────────────────
 export function getPurchases() {
-  return load(PURCHASES_KEY, []);
+  return load(k(PURCHASES_KEY), []);
 }
 
-/**
- * @param {object} p
- * @param {string} p.supplier    供應商名稱
- * @param {string} p.productId   商品 ID（可為空，會自動以名稱比對）
- * @param {string} p.productName 商品名稱
- * @param {number} p.unitCost    進貨單價
- * @param {number} p.quantity    數量
- * @param {string} [p.size]      尺碼（空字串 = 不分尺碼）
- */
 export function addPurchase({ supplier, productId, productName, unitCost, quantity, size = '', color = '' }) {
-  // Auto-link to existing product by name if productId not provided
   let resolvedId = productId ?? '';
   if (!resolvedId && productName) {
     const match = getProducts().find(p => p.name === productName);
@@ -345,15 +316,12 @@ export function addPurchase({ supplier, productId, productName, unitCost, quanti
     status:        '已下單',
     completedDate: null,
   };
-  save(PURCHASES_KEY, [...getPurchases(), purchase]);
+  save(k(PURCHASES_KEY), [...getPurchases(), purchase]);
   return purchase;
 }
 
-/**
- * Update a pending purchase record (only allowed while status = '已下單').
- */
 export function updatePurchase(id, updates) {
-  save(PURCHASES_KEY, getPurchases().map(p => {
+  save(k(PURCHASES_KEY), getPurchases().map(p => {
     if (p.id !== id) return p;
     const unitCost = Number(updates.unitCost ?? p.unitCost);
     const quantity = Number(updates.quantity ?? p.quantity);
@@ -361,23 +329,14 @@ export function updatePurchase(id, updates) {
   }));
 }
 
-/**
- * Confirm receipt: set status → 已完成, add stock to inventory.
- * Resolution order:
- *   1. purchase.productId (already stored)
- *   2. name-based lookup in products list
- *   3. auto-create a new product so stock is never silently lost
- */
 export function confirmReceipt(purchaseId) {
   const purchases = getPurchases();
   const purchase  = purchases.find(p => p.id === purchaseId);
   if (!purchase || purchase.status !== '已下單') return;
 
-  // Step 1 & 2: resolve from stored id or name lookup
   let effectiveId = purchase.productId ||
     getProducts().find(p => p.name === purchase.productName)?.id || '';
 
-  // Step 3: auto-create product so stock is never lost
   if (!effectiveId && purchase.productName) {
     const created = addProduct({
       name:     purchase.productName,
@@ -390,36 +349,26 @@ export function confirmReceipt(purchaseId) {
     effectiveId = created.id;
   }
 
-  // Update purchase status (re-read to get latest after potential addProduct)
-  save(PURCHASES_KEY, getPurchases().map(p =>
+  save(k(PURCHASES_KEY), getPurchases().map(p =>
     p.id === purchaseId
       ? { ...p, productId: effectiveId, status: '已完成', completedDate: new Date().toISOString().slice(0, 10) }
       : p
   ));
 
-  // Add stock to inventory (including color for variant tracking)
   if (effectiveId) {
     addStock(effectiveId, purchase.quantity, purchase.size ?? '', purchase.color ?? '');
   }
 }
 
 export function deletePurchase(id) {
-  save(PURCHASES_KEY, getPurchases().filter(p => p.id !== id));
+  save(k(PURCHASES_KEY), getPurchases().filter(p => p.id !== id));
 }
 
 // ─── Sales API ────────────────────────────────────────────────────────────────
 export function getSales() {
-  return load(SALES_KEY, []);
+  return load(k(SALES_KEY), []);
 }
 
-/**
- * @param {object} param
- * @param {string} param.productId
- * @param {number} param.actualPrice
- * @param {number} [param.quantity]
- * @param {string} [param.size]
- * @param {string} [param.color]
- */
 export function addSale({ productId, actualPrice, quantity = 1, size = '', color = '' }) {
   const product = getProducts().find(p => p.id === productId);
   if (!product) throw new Error('Product not found');
@@ -437,26 +386,23 @@ export function addSale({ productId, actualPrice, quantity = 1, size = '', color
     cost:        product.cost,
   };
 
-  save(SALES_KEY, [...getSales(), sale]);
+  save(k(SALES_KEY), [...getSales(), sale]);
   deductStock(productId, quantity, size, color);
   return sale;
 }
 
 export function deleteSale(id) {
-  save(SALES_KEY, getSales().filter(s => s.id !== id));
+  save(k(SALES_KEY), getSales().filter(s => s.id !== id));
 }
 
 // ─── Reset ────────────────────────────────────────────────────────────────────
-/** Wipe ALL app data from localStorage. Use with caution. */
 export function clearAllData() {
-  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, ONLINE_INV_KEY, INV_SIZES_KEY, VARIANTS_KEY]
-    .forEach(key => localStorage.removeItem(key));
+  ALL_KEYS.forEach(base => localStorage.removeItem(k(base)));
 }
 
 // ─── Tutorial ─────────────────────────────────────────────────────────────────
-const TUTORIAL_KEY = 'kw_tutorial_done';
-export function isTutorialDone()  { return load(TUTORIAL_KEY, false) === true; }
-export function markTutorialDone() { save(TUTORIAL_KEY, true); }
+export function isTutorialDone()   { return load(k(TUTORIAL_KEY), false) === true; }
+export function markTutorialDone() { save(k(TUTORIAL_KEY), true); }
 
 // ─── Computed helpers ─────────────────────────────────────────────────────────
 export function computeStats(sales) {
