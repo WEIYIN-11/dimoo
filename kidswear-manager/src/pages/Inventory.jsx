@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import {
   getInventoryStats, setStoreStock, setOnlineStock,
+  setVariantStore, setVariantOnline,
   DEFAULT_CATEGORIES, DEFAULT_SIZES,
 } from '../storage';
 
@@ -133,12 +134,81 @@ function ChannelAdjuster({ label, icon, value, max, onDecrement, onIncrement, co
   );
 }
 
+// ─── Per-variant channel table ────────────────────────────────────────────────
+function VariantTable({ variants, productId, onSetStore, onSetOnline }) {
+  if (!variants || variants.length === 0) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <p className="text-[10px] font-semibold text-gray-400 mb-2">尺碼 / 花色庫存分配</p>
+
+      {/* Header row */}
+      <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 pb-1.5 border-b border-gray-100">
+        <span className="flex-1">規格</span>
+        <span className="w-7 text-center">總</span>
+        <span className="w-[76px] text-center text-brand-400">🏪 店面</span>
+        <span className="w-[76px] text-center text-purple-400">🌐 網路</span>
+        <span className="w-7 text-center text-blue-400">倉</span>
+      </div>
+
+      {/* Variant rows */}
+      {variants.map(v => (
+        <div key={v.key} className="flex items-center gap-1 py-2 border-b border-gray-50 last:border-0">
+          {/* Spec badges */}
+          <div className="flex-1 flex items-center gap-1 flex-wrap min-w-0">
+            {v.size  && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-1.5 py-0.5 font-semibold">{v.size}</span>}
+            {v.color && <span className="text-[10px] bg-pink-50  text-pink-600  border border-pink-200  rounded-lg px-1.5 py-0.5 font-semibold">{v.color}</span>}
+            {!v.size && !v.color && <span className="text-[10px] text-gray-400">全規格</span>}
+          </div>
+
+          {/* Total */}
+          <span className="w-7 text-center text-xs font-bold text-gray-600">{v.total}</span>
+
+          {/* Store stepper */}
+          <div className="w-[76px] flex items-center justify-center gap-0.5">
+            <button
+              onClick={() => onSetStore(productId, v.size, v.color, v.store - 1)}
+              disabled={v.store === 0}
+              className="w-5 h-5 rounded-md bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
+            >-</button>
+            <span className="w-7 text-center text-xs font-black text-brand-700">{v.store}</span>
+            <button
+              onClick={() => onSetStore(productId, v.size, v.color, v.store + 1)}
+              disabled={v.store >= v.total - v.online}
+              className="w-5 h-5 rounded-md bg-brand-50 text-brand-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
+            >+</button>
+          </div>
+
+          {/* Online stepper */}
+          <div className="w-[76px] flex items-center justify-center gap-0.5">
+            <button
+              onClick={() => onSetOnline(productId, v.size, v.color, v.online - 1)}
+              disabled={v.online === 0}
+              className="w-5 h-5 rounded-md bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
+            >-</button>
+            <span className="w-7 text-center text-xs font-black text-purple-700">{v.online}</span>
+            <button
+              onClick={() => onSetOnline(productId, v.size, v.color, v.online + 1)}
+              disabled={v.online >= v.total - v.store}
+              className="w-5 h-5 rounded-md bg-purple-50 text-purple-600 text-xs font-bold disabled:opacity-30 flex items-center justify-center active:scale-95"
+            >+</button>
+          </div>
+
+          {/* Warehouse */}
+          <span className="w-7 text-center text-xs font-bold text-blue-600">{v.warehouse}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Single inventory card ────────────────────────────────────────────────────
-function InventoryCard({ item, onTransferStore, onTransferOnline }) {
+function InventoryCard({ item, onTransferStore, onTransferOnline, onSetVariantStore, onSetVariantOnline }) {
   const {
     product, totalStock, storeStock, onlineStock, warehouseStock,
-    avgCost, hasPending, sizeBreakdown = {},
+    avgCost, hasPending, sizeBreakdown = {}, variants = [],
   } = item;
+  const hasVariants = variants.length > 0;
   const isZero     = totalStock === 0;
   const isLow      = totalStock > 0 && totalStock < LOW_STOCK;
   const storeEmpty = storeStock === 0 && totalStock > 0;
@@ -272,28 +342,37 @@ function InventoryCard({ item, onTransferStore, onTransferOnline }) {
         ) : null;
       })()}
 
-      {/* Row 6 — channel adjusters */}
+      {/* Row 6 — channel adjusters (per-variant when available, aggregate otherwise) */}
       {totalStock > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2.5">
-          <ChannelAdjuster
-            label="設定店面庫存"
-            icon={Store}
-            value={storeStock}
-            max={totalStock - onlineStock}
-            onDecrement={() => onTransferStore(product.id, storeStock - 1)}
-            onIncrement={() => onTransferStore(product.id, storeStock + 1)}
-            color={{ text: 'text-brand-700', btn: 'bg-brand-100 hover:bg-brand-200 text-brand-700' }}
+        hasVariants ? (
+          <VariantTable
+            variants={variants}
+            productId={product.id}
+            onSetStore={onSetVariantStore}
+            onSetOnline={onSetVariantOnline}
           />
-          <ChannelAdjuster
-            label="設定網路庫存"
-            icon={Globe}
-            value={onlineStock}
-            max={totalStock - storeStock}
-            onDecrement={() => onTransferOnline(product.id, onlineStock - 1)}
-            onIncrement={() => onTransferOnline(product.id, onlineStock + 1)}
-            color={{ text: 'text-purple-700', btn: 'bg-purple-100 hover:bg-purple-200 text-purple-700' }}
-          />
-        </div>
+        ) : (
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2.5">
+            <ChannelAdjuster
+              label="設定店面庫存"
+              icon={Store}
+              value={storeStock}
+              max={totalStock - onlineStock}
+              onDecrement={() => onTransferStore(product.id, storeStock - 1)}
+              onIncrement={() => onTransferStore(product.id, storeStock + 1)}
+              color={{ text: 'text-brand-700', btn: 'bg-brand-100 hover:bg-brand-200 text-brand-700' }}
+            />
+            <ChannelAdjuster
+              label="設定網路庫存"
+              icon={Globe}
+              value={onlineStock}
+              max={totalStock - storeStock}
+              onDecrement={() => onTransferOnline(product.id, onlineStock - 1)}
+              onIncrement={() => onTransferOnline(product.id, onlineStock + 1)}
+              color={{ text: 'text-purple-700', btn: 'bg-purple-100 hover:bg-purple-200 text-purple-700' }}
+            />
+          </div>
+        )
       )}
     </div>
   );
@@ -365,6 +444,16 @@ export default function Inventory() {
 
   const handleTransferOnline = useCallback((productId, qty) => {
     setOnlineStock(productId, qty);
+    tick();
+  }, [tick]);
+
+  const handleSetVariantStore = useCallback((productId, size, color, qty) => {
+    setVariantStore(productId, size, color, qty);
+    tick();
+  }, [tick]);
+
+  const handleSetVariantOnline = useCallback((productId, size, color, qty) => {
+    setVariantOnline(productId, size, color, qty);
     tick();
   }, [tick]);
 
@@ -554,6 +643,8 @@ export default function Inventory() {
                     item={item}
                     onTransferStore={handleTransferStore}
                     onTransferOnline={handleTransferOnline}
+                    onSetVariantStore={handleSetVariantStore}
+                    onSetVariantOnline={handleSetVariantOnline}
                   />
                 ))}
               </div>

@@ -6,6 +6,7 @@ const INVENTORY_KEY  = 'kw_inventory';    // { [productId]: totalQty }
 const STORE_INV_KEY  = 'kw_store_inv';   // { [productId]: storeQty }
 const ONLINE_INV_KEY = 'kw_online_inv';  // { [productId]: onlineQty }
 const INV_SIZES_KEY  = 'kw_inv_sizes';   // { [productId]: { [size]: qty } }
+const VARIANTS_KEY   = 'kw_variants';    // { [productId]: { [variantKey]: { total, store, online } } }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,76 @@ function save(key, data) {
     // QuotaExceededError — log but do not crash the app
     console.error('[storage] save failed:', e);
   }
+}
+
+// ─── Variant helpers (size × color granularity) ──────────────────────────────
+
+/** Build a composite variant key from size and color (both may be empty). */
+function vk(size = '', color = '') { return `${size}::${color}`; }
+
+/** Parse a variant key back to { size, color }. */
+export function parseVariantKey(key = '') {
+  const sep = key.indexOf('::');
+  return sep < 0
+    ? { size: key, color: '' }
+    : { size: key.slice(0, sep), color: key.slice(sep + 2) };
+}
+
+function getAllVariants() { return load(VARIANTS_KEY, {}); }
+
+/** Atomically update one variant entry with an updater function. */
+function patchVariant(productId, size, color, updater) {
+  const all  = getAllVariants();
+  const prod = all[productId] ?? {};
+  const key  = vk(size, color);
+  const cur  = prod[key] ?? { total: 0, store: 0, online: 0 };
+  save(VARIANTS_KEY, { ...all, [productId]: { ...prod, [key]: updater(cur) } });
+}
+
+/** Returns { [variantKey]: { total, store, online } } for one product. */
+export function getProductVariants(productId) {
+  return getAllVariants()[productId] ?? {};
+}
+
+/**
+ * Returns a sorted array of { key, size, color, total, store, online, warehouse }
+ * for all variants of a product.
+ */
+export function getProductVariantList(productId) {
+  const variants = getProductVariants(productId);
+  return Object.entries(variants)
+    .map(([key, v]) => ({
+      key,
+      ...parseVariantKey(key),
+      total:     v.total,
+      store:     v.store,
+      online:    v.online,
+      warehouse: Math.max(0, v.total - v.store - v.online),
+    }))
+    .sort((a, b) => {
+      const si = DEFAULT_SIZES.indexOf(a.size);
+      const bi = DEFAULT_SIZES.indexOf(b.size);
+      if (si >= 0 && bi >= 0 && si !== bi) return si - bi;
+      const sc = a.size.localeCompare(b.size, 'zh-TW');
+      if (sc !== 0) return sc;
+      return a.color.localeCompare(b.color, 'zh-TW');
+    });
+}
+
+/** Set store qty for one variant (clamped to [0, total − online]). */
+export function setVariantStore(productId, size, color, qty) {
+  patchVariant(productId, size, color, v => ({
+    ...v,
+    store: Math.max(0, Math.min(v.total - v.online, Number(qty))),
+  }));
+}
+
+/** Set online qty for one variant (clamped to [0, total − store]). */
+export function setVariantOnline(productId, size, color, qty) {
+  patchVariant(productId, size, color, v => ({
+    ...v,
+    online: Math.max(0, Math.min(v.total - v.store, Number(qty))),
+  }));
 }
 
 // ─── Default categories & sizes (no pre-seeded products) ─────────────────────
@@ -115,8 +186,8 @@ export function setOnlineStock(productId, qty) {
 }
 
 /** Add stock (positive qty). New stock goes to warehouse by default.
- *  Pass size to also track in the per-size breakdown. */
-export function addStock(productId, qty, size = '') {
+ *  Pass size / color to track in per-size and per-variant breakdowns. */
+export function addStock(productId, qty, size = '', color = '') {
   const n = Number(qty);
   const inv = getInventory();
   save(INVENTORY_KEY, { ...inv, [productId]: (inv[productId] ?? 0) + n });
@@ -129,13 +200,16 @@ export function addStock(productId, qty, size = '') {
       [productId]: { ...prodSizes, [size]: (prodSizes[size] ?? 0) + n },
     });
   }
+
+  // Per-variant tracking (size × color)
+  patchVariant(productId, size, color, v => ({ ...v, total: v.total + n }));
 }
 
 /**
  * Deduct stock (positive qty). Deducts from total, store, and online proportionally.
- * Pass size to also deduct from the per-size breakdown.
+ * Pass size / color to also deduct from per-size and per-variant breakdowns.
  */
-export function deductStock(productId, qty, size = '') {
+export function deductStock(productId, qty, size = '', color = '') {
   const n = Number(qty);
 
   // Update total
@@ -164,6 +238,14 @@ export function deductStock(productId, qty, size = '') {
   const curOnline = onlineInv[productId] ?? 0;
   const newOnline = Math.max(0, Math.min(curOnline, newTotal - newStore));
   save(ONLINE_INV_KEY, { ...onlineInv, [productId]: newOnline });
+
+  // Per-variant deduction (size × color)
+  patchVariant(productId, size, color, v => {
+    const vTotal  = Math.max(0, v.total - n);
+    const vStore  = Math.max(0, Math.min(v.store,  vTotal));
+    const vOnline = Math.max(0, Math.min(v.online, vTotal - vStore));
+    return { total: vTotal, store: vStore, online: vOnline };
+  });
 }
 
 /**
@@ -221,6 +303,7 @@ export function getInventoryStats() {
         avgCost:        getAveragePurchaseCost(p.id),
         hasPending:     pendingIds.has(p.id),
         sizeBreakdown:  sizeInv[p.id] ?? {},
+        variants:       getProductVariantList(p.id),
       };
     })
     .sort((a, b) => a.stock - b.stock);
@@ -240,7 +323,7 @@ export function getPurchases() {
  * @param {number} p.quantity    數量
  * @param {string} [p.size]      尺碼（空字串 = 不分尺碼）
  */
-export function addPurchase({ supplier, productId, productName, unitCost, quantity, size = '' }) {
+export function addPurchase({ supplier, productId, productName, unitCost, quantity, size = '', color = '' }) {
   // Auto-link to existing product by name if productId not provided
   let resolvedId = productId ?? '';
   if (!resolvedId && productName) {
@@ -255,6 +338,7 @@ export function addPurchase({ supplier, productId, productName, unitCost, quanti
     productId:     resolvedId,
     productName,
     size,
+    color,
     unitCost:      Number(unitCost),
     quantity:      Number(quantity),
     totalCost:     Number(unitCost) * Number(quantity),
@@ -313,9 +397,9 @@ export function confirmReceipt(purchaseId) {
       : p
   ));
 
-  // Add stock to inventory
+  // Add stock to inventory (including color for variant tracking)
   if (effectiveId) {
-    addStock(effectiveId, purchase.quantity, purchase.size ?? '');
+    addStock(effectiveId, purchase.quantity, purchase.size ?? '', purchase.color ?? '');
   }
 }
 
@@ -354,7 +438,7 @@ export function addSale({ productId, actualPrice, quantity = 1, size = '', color
   };
 
   save(SALES_KEY, [...getSales(), sale]);
-  deductStock(productId, quantity, size);
+  deductStock(productId, quantity, size, color);
   return sale;
 }
 
@@ -365,7 +449,7 @@ export function deleteSale(id) {
 // ─── Reset ────────────────────────────────────────────────────────────────────
 /** Wipe ALL app data from localStorage. Use with caution. */
 export function clearAllData() {
-  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, ONLINE_INV_KEY, INV_SIZES_KEY]
+  [PRODUCTS_KEY, SALES_KEY, PURCHASES_KEY, INVENTORY_KEY, STORE_INV_KEY, ONLINE_INV_KEY, INV_SIZES_KEY, VARIANTS_KEY]
     .forEach(key => localStorage.removeItem(key));
 }
 

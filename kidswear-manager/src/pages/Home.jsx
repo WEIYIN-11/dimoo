@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { PlusCircle, TrendingUp, ShoppingBag, DollarSign } from 'lucide-react';
 import SaleModal from '../components/SaleModal';
 import { todaySales, computeStats } from '../storage';
@@ -20,8 +20,6 @@ function StatCard({ icon: Icon, label, value, color }) {
 export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [refresh, setRefresh]     = useState(0);
-
-  const reload = useCallback(() => setRefresh(r => r + 1), []);
 
   const sales = todaySales();
   const { revenue, profit, margin } = computeStats(sales);
@@ -116,7 +114,7 @@ export default function Home() {
       <SaleModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSaved={reload}
+        onSaved={() => setRefresh(r => r + 1)}
       />
     </div>
   );

@@ -100,6 +100,44 @@ function NewProductModal({ purchase, onConfirm, onSkip }) {
   );
 }
 
+// ─── Color chips ─────────────────────────────────────────────────────────────
+const PRESET_COLORS = ['紅', '藍', '綠', '黃', '白', '黑', '粉', '灰', '橘', '紫'];
+
+function ColorChips({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+        花色
+        <span className="font-normal text-gray-400 ml-1">（選填）</span>
+      </label>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {PRESET_COLORS.map(c => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(value === c ? '' : c)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
+              value === c
+                ? 'bg-pink-500 border-pink-500 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-pink-300'
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        maxLength={20}
+        placeholder="或輸入自訂花色…"
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-pink-300 bg-white"
+      />
+    </div>
+  );
+}
+
 // ─── Size chips (multi-select) ────────────────────────────────────────────────
 function SizeChips({ value, onChange }) {
   // value is an array of selected sizes
@@ -303,6 +341,7 @@ function PurchaseForm({ onSave, onCancel }) {
   const [unitCost,     setUnitCost]     = useState('');
   const [quantity,     setQuantity]     = useState('');
   const [sizes,        setSizes]        = useState([]);
+  const [color,        setColor]        = useState('');
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -314,6 +353,7 @@ function PurchaseForm({ onSave, onCancel }) {
       productName,
       unitCost:    Number(unitCost),
       quantity:    Number(quantity),
+      color:       color.trim(),
     };
 
     const records = sizes.length === 0
@@ -363,6 +403,9 @@ function PurchaseForm({ onSave, onCancel }) {
 
       {/* Size chips (multi-select) */}
       <SizeChips value={sizes} onChange={setSizes} />
+
+      {/* Color chips */}
+      <ColorChips value={color} onChange={setColor} />
 
       {/* Cost + Qty */}
       <div className="grid grid-cols-2 gap-3">
@@ -459,6 +502,11 @@ function PurchaseCard({ p, onConfirm, onDelete, onEdit, isEditing }) {
                   {p.size}
                 </span>
               )}
+              {p.color && (
+                <span className="text-[11px] font-bold bg-pink-50 text-pink-600 border border-pink-200 rounded-lg px-2 py-0.5">
+                  {p.color}
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
               供應商：{p.supplier}
@@ -513,7 +561,7 @@ function PurchaseCard({ p, onConfirm, onDelete, onEdit, isEditing }) {
           className="w-full py-3 bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
         >
           <PackageCheck size={18} />
-          確認收貨　（＋{p.quantity} 件{p.size ? `・${p.size}` : ''}入庫）
+          確認收貨　（＋{p.quantity} 件{p.size ? `・${p.size}` : ''}{p.color ? `・${p.color}` : ''}入庫）
         </button>
       )}
     </div>

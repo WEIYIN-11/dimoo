@@ -16,7 +16,20 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(git commit:*)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(wc -l src/**/*.jsx src/**/*.js)",
+      "Bash(npx vercel *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:dimoo-eta.vercel.app)",
+      "Read(//c/Users/User/Desktop/linkpersonal/kidswear-manager/%APPDATA%/Roaming/com.vercel.cli/**)",
+      "Read(//c/Users/User/Desktop/linkpersonal/kidswear-manager/%USERPROFILE%/.vercel/**)",
+      "Bash(dir \"C:\\\\Users\\\\User\\\\AppData\\\\Roaming\" /b)",
+      "Bash(findstr -i vercel)",
+      "Bash(dir \"C:\\\\Users\\\\User\\\\AppData\\\\Roaming\\\\com.vercel.cli\" /b)",
+      "Bash(npm audit *)",
+      "Bash(npm uninstall *)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Users\\\\User\\\\Desktop\\\\linkpersonal\\\\kidswear-manager\\\\src\" -Include \"*.jsx\",\"*.js\")",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Check, X, Package, AlertTriangle } from 'lucide-react';
-import { getProducts, addProduct, updateProduct, deleteProduct, DEFAULT_CATEGORIES, clearAllData } from '../storage';
+import { getProducts, addProduct, updateProduct, deleteProduct, addStock, DEFAULT_CATEGORIES, DEFAULT_SIZES, clearAllData } from '../storage';
 
 // ─── Tag input – type + Enter to add, click × to remove ───────────────────────
 function TagInput({ label, tags, onChange }) {
@@ -44,6 +44,46 @@ function TagInput({ label, tags, onChange }) {
           新增
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Size chips (multi-select from DEFAULT_SIZES) ─────────────────────────────
+function SizeChips({ value, onChange }) {
+  function toggle(s) {
+    onChange(value.includes(s) ? value.filter(x => x !== s) : [...value, s]);
+  }
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+        尺碼
+        <span className="font-normal text-gray-400 ml-1">（可複選）</span>
+      </label>
+      <div className="flex flex-wrap gap-1.5">
+        {DEFAULT_SIZES.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => toggle(s)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all active:scale-95 ${
+              value.includes(s)
+                ? 'bg-brand-600 border-brand-600 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      {value.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="mt-1 text-[11px] text-gray-400 hover:text-red-400"
+        >
+          清除全部
+        </button>
+      )}
     </div>
   );
 }
@@ -105,13 +145,18 @@ function ProductForm({ initial, onSave, onCancel }) {
       sizes: [], colors: [],
     }
   );
+  // Initial stock per size (only relevant when adding a new product)
+  const [initStock, setInitStock] = useState({});
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })); }
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.cost || !form.defaultPrice || !form.category.trim()) return;
-    onSave({ ...form, cost: Number(form.cost), defaultPrice: Number(form.defaultPrice) });
+    onSave(
+      { ...form, cost: Number(form.cost), defaultPrice: Number(form.defaultPrice) },
+      initStock
+    );
   }
 
   const canSave = form.name.trim() && form.cost && form.defaultPrice && form.category.trim();
@@ -185,12 +230,47 @@ function ProductForm({ initial, onSave, onCancel }) {
         </div>
       )}
 
-      {/* Sizes */}
-      <TagInput
-        label="尺寸（可多個，如 90cm / 100cm）"
-        tags={form.sizes ?? []}
-        onChange={v => set('sizes', v)}
+      {/* Sizes — multi-select chips */}
+      <SizeChips
+        value={form.sizes ?? []}
+        onChange={v => {
+          set('sizes', v);
+          // Remove initStock entries for de-selected sizes
+          setInitStock(prev => {
+            const next = { ...prev };
+            Object.keys(next).forEach(s => { if (!v.includes(s)) delete next[s]; });
+            return next;
+          });
+        }}
       />
+
+      {/* Initial stock per size (only for new products) */}
+      {!initial && form.sizes?.length > 0 && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+            初始庫存
+            <span className="font-normal text-gray-400 ml-1">（可略過，之後可透過採購新增）</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {form.sizes.map(s => (
+              <div key={s} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-1.5">
+                <span className="text-xs font-bold text-gray-600 min-w-[28px]">{s}</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={initStock[s] ?? ''}
+                  onChange={e => setInitStock(prev => ({ ...prev, [s]: e.target.value }))}
+                  min={0}
+                  max={9999}
+                  placeholder="0"
+                  className="w-14 text-sm text-center outline-none border-0 bg-transparent"
+                />
+                <span className="text-xs text-gray-400">件</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Colors */}
       <TagInput
@@ -309,8 +389,13 @@ export default function Products() {
   function reload() { setProducts(getProducts()); }
   useEffect(reload, []);
 
-  function handleAdd(data) {
-    addProduct(data);
+  function handleAdd(data, initStock = {}) {
+    const newProduct = addProduct(data);
+    // Add initial stock for each size that has a qty > 0
+    for (const [size, qty] of Object.entries(initStock)) {
+      const n = Number(qty);
+      if (n > 0) addStock(newProduct.id, n, size, '');
+    }
     reload();
     setShowAdd(false);
   }
